@@ -112,6 +112,8 @@ h1 em { font-style: normal; color: var(--accent); }
 .fchip.saved button { display: flex; align-items: center; gap: 6px; background: none; border: 0; color: inherit; font: inherit; padding: 3px 4px 3px 11px; cursor: pointer; }
 .fchip.saved .x { padding: 3px 8px 3px 4px; opacity: .5; }
 .fchip.saved .x:hover { opacity: 1; color: var(--red); }
+.fchip.toggle-chip .ic { width: 13px; height: 13px; }
+.fchip.toggle-chip { padding-right: 12px; }
 .divider { width: 1px; height: 18px; background: var(--line); margin: 0 4px; align-self: center; }
 .naming { padding: 3px 10px; border-radius: 20px; font-size: 12.5px; width: 200px; }
 .builder { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px 14px; padding: 4px 24px 16px; }
@@ -164,7 +166,9 @@ a.chip.jira:hover { text-decoration: none; background: color-mix(in srgb, var(--
 .pick { display: grid; place-items: center; width: 18px; height: 18px; margin: -2px 2px -2px -4px; border: 0; background: none; color: var(--dim); border-radius: 4px; cursor: pointer; padding: 0; }
 .pick:hover, .picked .pick { color: var(--accent); }
 .pick .ic { width: 13px; height: 13px; }
-.pick .i-on, .picked .pick .i-off { display: none; }
+/* the corner icon is the PR glyph until you hover (an empty checkbox) or select (checked) */
+.pick .i-off, .pick .i-on, .card:hover .pick .i-pr, .tbl tr:hover .pick .i-pr, .picked .pick .i-pr, .picked .pick .i-off { display: none; }
+.card:hover .pick .i-off, .tbl tr:hover .pick .i-off { display: inline; }
 .picked .pick .i-on { display: inline; }
 .empty { display: grid; place-items: center; gap: 4px; color: var(--dim); padding: 80px 20px; }
 .empty p { margin: 0; }
@@ -266,7 +270,8 @@ main { padding: 18px 24px 60px; }
 .d-head { display: flex; align-items: center; gap: 10px; }
 .d-head h3 { margin: 0; font-size: 16px; }
 .d-head a { display: inline-flex; align-items: center; gap: 4px; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.quick { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
+.quick { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 16px; }
+.drawer .acts .btn, .quick .btn:not(.primary) { padding: 5px 10px; font-size: 12.5px; }
 .kv { display: grid; grid-template-columns: 92px 1fr; gap: 9px 12px; margin: 0; font-size: 13px; align-items: center; }
 .kv dt { color: var(--dim); }
 .kv dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }

@@ -63,7 +63,8 @@
       <input class="naming" x-ref="naming" x-show="naming !== null" x-model="naming" placeholder="Filter name, Enter to save"
         @keydown.enter="saveFilter(naming)" @keydown.escape.stop="naming = null" @blur="naming = null">
     </nav>
-    <label class="toggle"><input type="checkbox" x-model="showHidden"><span>Hidden &amp; snoozed</span></label>
+    <button class="fchip toggle-chip" :class="{ on: showHidden }" @click="showHidden = !showHidden" title="Show PRs you hid or snoozed">
+      <svg class="ic"><use href="/static/icons.svg#eye-off"/></svg>Hidden &amp; snoozed</button>
     <span class="grow"></span>
     <span class="dim small" x-show="data && q" x-text="list.length + ' match'"></span>
     <button class="hint" @click="panel = 'help'"><svg class="ic"><use href="/static/icons.svg#keyboard"/></svg> Shortcuts <kbd>?</kbd></button>
@@ -167,7 +168,7 @@
           <a class="chip jira" :class="'jc-' + (jira(k)?.category || '')" :href="jiraHref(k)" target="_blank"><span x-text="k"></span><span class="jstat" x-show="jira(k)" x-text="jira(k)?.status + (jira(k)?.assignee ? ' · ' + jira(k).assignee : '')"></span></a>
         </template>
         <template x-for="l in pane.labels" :key="l"><span class="chip" x-text="l"></span></template>
-        <template x-for="f in flags(pane)" :key="f[0]"><span class="chip flag" :class="f[1]"><svg class="ic"><use :href="'/static/icons.svg#' + f[2]"/></svg><span x-text="f[3]"></span></span></template>
+        <template x-for="f in flags(pane)" :key="f[0]"><span class="chip flag" :class="f[1]"><svg class="ic" x-show="f[2]"><use :href="'/static/icons.svg#' + f[2]"/></svg><span x-text="f[3]"></span></span></template>
       </div>
 
       <div class="quick">

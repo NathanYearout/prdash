@@ -9,7 +9,7 @@ from urllib.parse import parse_qs, urlsplit
 from . import config, db, github, integrations, local, standup, sync
 
 WEB = Path(__file__).resolve().parent / "web"
-TYPES = {".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".woff2": "font/woff2", ".html": "text/html"}
+TYPES = {".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".woff2": "font/woff2"}
 PORT = 8765
 DEMO = False
 
@@ -18,7 +18,7 @@ OPS = {
     **{op: (lambda op: lambda pr, body: github.act(op, pr["url"], body))(op) for op in github.ACTIONS},
     "rerun": lambda pr, body: github.rerun_failed(pr["url"]),
     "claude": lambda pr, body: local.claude(pr),
-    "review": lambda pr, body: (local.start_review(pr, _review_done), "Claude review started")[1],
+    "review": lambda pr, body: start_review(pr),
     "editor": lambda pr, body: local.editor(pr),
     "terminal": lambda pr, body: local.terminal(pr),
     "checkout": lambda pr, body: local.checkout(pr),
@@ -29,6 +29,11 @@ OPS = {
     "slack_find": lambda pr, body: "found it" if integrations.slack_find(pr) else "not posted yet",
 }
 CHANGES_GITHUB = set(github.ACTIONS) | {"rerun"}
+
+
+def start_review(pr):
+    local.start_review(pr, _review_done)
+    return "Claude review started"
 
 
 def _review_done(pr):

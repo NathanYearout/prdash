@@ -155,8 +155,8 @@ Alpine.data("prdash", () => ({
     });
   },
   get board() {
-    const list = this.list, { preset, scope, rev, more } = this;
-    return memo("board", [list, preset, scope, rev, more], () => {
+    const list = this.list, { preset, scope, rev, more, q } = this;
+    return memo("board", [list, preset, scope, rev, more, q], () => {
       const want = PRESETS[preset].statuses, groups = {};
       for (const p of list) (groups[p.status] ||= []).push(p);
       // urgent first, then your priority; stable, so the chosen sort holds within each
@@ -164,7 +164,7 @@ Alpine.data("prdash", () => ({
       return STATUSES.filter(s => (!want || want.includes(s.key)) && !(s.key === "merged" && scope === "review")).map(s => {
         const all = (groups[s.key] || []).sort(byPrio);
         return { ...s, total: all.length, prs: more[s.key] ? all : all.slice(0, COL_LIMIT) };
-      });
+      }).filter((c, _, cols) => !this.q.trim() || c.total || cols.every(x => !x.total)); // filtering: hide empty columns
     });
   },
   get order() { return this.layout === "board" ? memo("order", [this.board], () => this.board.flatMap(c => c.prs)) : this.list; }, // j/k order
@@ -244,8 +244,8 @@ Alpine.data("prdash", () => ({
     if (p.mergeable === "CONFLICTING") f.push(["Conflicts", "red", "triangle-alert", `Merge conflicts with ${p.base}`]);
     if (p.author === this.data?.me && p.status === "in_review" && !this.L(p).posted && this.days(p.created) < 3)
       f.push(["Post", "amber", "hash", "Not announced in Slack yet"]);
-    if (p.status === "approved" && this.days(p.updated) > 1) f.push([idle, "amber", "git-merge", `Approved but idle ${idle}: ping to merge`]);
-    if (p.status === "in_review" && this.days(p.updated) > (this.cfg.stale_days || 5)) f.push([idle, "muted", "clock", `No activity for ${idle}: nudge reviewers`]);
+    if (p.status === "approved" && this.days(p.updated) > 1) f.push(["Merge?", "amber", "git-merge", `Approved but idle ${idle}: ping to merge`]);
+    if (p.status === "in_review" && this.days(p.updated) > (this.cfg.stale_days || 5)) f.push(["Quiet", "muted", "clock", `No activity for ${idle}: nudge reviewers`]);
     return f;
   },
   slackText(p) {
