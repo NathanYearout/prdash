@@ -101,7 +101,7 @@
   <div class="banner" x-show="status.error"><svg class="ic"><use href="/static/icons.svg#triangle-alert"/></svg><span x-text="'Last sync failed: ' + status.error"></span></div>
 
   <section class="board" x-show="data && layout === 'board'">
-    <template x-for="col in board" :key="col.key">
+    <template x-for="col in board" :key="col.id">
       <div class="col" :class="'s-' + col.key">
         <div class="col-h" :title="col.hint"><i class="sdot"></i><span x-text="col.label"></span><b x-text="col.total"></b></div>
         <div class="col-body" x-html="colHTML(col)" @click="listClick($event)"></div>

@@ -138,6 +138,24 @@ await app("a.sync()"); await sleep(500);
 await waitFor(`!Alpine.$data(document.body).status.syncing`, 60000);
 console.log(`     quiet sync re-rendered: ${(await app("a.rev")) !== rev0 ? "yes (something on GitHub changed)" : "no"}`);
 
+// a sync that changes a PR's status moves its card (the state is rewritten in flight, like a merge on GitHub)
+const moved = await js(`(async () => {
+  const a = Alpine.$data(document.body), wait = ms => new Promise(r => setTimeout(r, ms));
+  a.scope = "team"; a.preset = "open"; a.q = ""; await wait(200);
+  const url = Object.values(a.data.prs).find(p => p.status === "approved" && a.data.views.team.includes(p.url)).url;
+  const real = window.fetch, on = () => !!document.querySelector('.board [data-url="' + CSS.escape(url) + '"]');
+  window.fetch = async (path, o) => {
+    const r = await real(path, o);
+    if (path !== "/api/state") return r;
+    const d = await r.json(); Object.assign(d.prs[url], { status: "merged", merged: new Date().toISOString(), state: "MERGED" });
+    return new Response(JSON.stringify(d), { headers: { "Content-Type": "application/json" } });
+  };
+  await a.load(); await wait(300); const gone = !on();
+  window.fetch = real; await a.load(); await wait(300);
+  return gone && on();
+})()`);
+check("board follows status changes from a sync", moved);
+
 // every icon reference resolves to a symbol in the (versioned) sprite
 const missing = await js(`(async () => {
   const uses = [...document.querySelectorAll("use")].map(u => u.getAttribute("href")).filter(Boolean);

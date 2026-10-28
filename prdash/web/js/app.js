@@ -87,6 +87,10 @@ function memo(name, deps, fn) {
   return value;
 }
 const COL_LIMIT = 40;
+// A column's x-html depends on both its x-for scope and `rev` (cards read local data). Alpine runs an effect once
+// per flush, so after a sync the column could render before x-for handed it the new column, then miss the refresh.
+// Keying columns by board generation gives every recomputed board fresh column elements.
+let BOARD_GEN = 0;
 // PR data lives outside Alpine's reactivity (proxying 250 PRs made every read during filtering and rendering
 // pay for dependency tracking). Alpine watches `rev` instead; __v_skip keeps @vue/reactivity from wrapping it.
 const raw = o => Object.defineProperty(o, "__v_skip", { value: true });
@@ -171,13 +175,13 @@ Alpine.data("prdash", () => ({
   get board() {
     const list = this.list, { preset, scope, rev, more, q } = this;
     return memo("board", [list, preset, scope, rev, more, q], () => {
-      const want = PRESETS[preset].statuses, groups = {};
+      const want = PRESETS[preset].statuses, groups = {}, gen = ++BOARD_GEN;
       for (const p of list) (groups[p.status] ||= []).push(p);
       // urgent first, then your priority; stable, so the chosen sort holds within each
       const byPrio = (a, b) => (!!b.urgent - !!a.urgent) || (this.L(b).prio || 0) - (this.L(a).prio || 0);
       return STATUSES.filter(s => (!want || want.includes(s.key)) && !(s.key === "merged" && scope === "review")).map(s => {
         const all = (groups[s.key] || []).sort(byPrio);
-        return { ...s, total: all.length, prs: more[s.key] ? all : all.slice(0, COL_LIMIT) };
+        return { ...s, id: `${s.key}:${gen}`, total: all.length, prs: more[s.key] ? all : all.slice(0, COL_LIMIT) };
       }).filter((c, _, cols) => !this.q.trim() || c.total || cols.every(x => !x.total)); // filtering: hide empty columns
     });
   },
