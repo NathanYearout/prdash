@@ -62,9 +62,9 @@ Draft → Needs work → In review → Approved → Merged across every org you 
 <td colspan="2" align="center">
 
 ### Urgent and bumped PRs
-Put **urgent** in a title (or add an `urgent` label) and the card gets animated flames, shakes every few seconds, and jumps to the top of its column. If your system asks for reduced motion, it glows without shaking. When someone comments **bump**, the card shows who bumped it and when, and the bump shows up in your inbox.
+Put **urgent** in a title (or add an `urgent` label) and the card gets a red ring with a highlight that travels around its edge, and it moves to the top of its column. If your system asks for reduced motion, the ring stays and the highlight holds still. When someone comments **bump**, the card shows who bumped it and when, and the bump shows up in your inbox.
 
-<img src="docs/urgent.gif" alt="An urgent PR card glowing red and shaking next to a card with a Bumped chip" width="720">
+<img src="docs/urgent.gif" alt="An urgent PR card with a red ring and a moving highlight, next to a card with a Bumped chip" width="720">
 
 </td>
 </tr>
@@ -127,7 +127,7 @@ prdash finds your GitHub login, your orgs, the folders where your clones live, y
 ### And also
 
 - **Your checkouts:** clone a repo, check out the PR branch, or create a worktree per PR, then open your editor (`code`, `nvim` in your terminal, anything) or a terminal there.
-- **Conversation:** the PR panel lists the description, comments, reviews, and inline code comments in order, with `file:line` links back to GitHub.
+- **Conversation:** the PR panel shows the description and every comment, review, and inline code comment with GitHub's formatting and `file:line` links, plus a box to comment, approve, or request changes.
 - **CI:** every check on the latest commit with links, and one click to re-run the failed GitHub Actions jobs.
 - **Your own layer:** priority, tags, notes, "waiting on", snooze until a date, and hide. These stay in prdash's database and never go to GitHub.
 - **Batch actions:** select with `x` or shift-click, then rebase, approve, re-run CI, AI-review, snooze, tag, or hide them together.
@@ -200,7 +200,7 @@ API presets: DeepSeek `https://api.deepseek.com` (`deepseek-chat`), Grok `https:
 ```sh
 python3 -m prdash --no-open --port 8766        # PRDASH_HOME=/tmp/x for a scratch database, --demo for fake data
 python3 -m unittest discover tests            # backend, Slack/Jira against stub servers, server security
-node --test tests/filter.test.mjs             # filter language
+node --test tests/*.test.mjs                  # filter language, markdown rendering
 node tests/e2e.mjs http://127.0.0.1:8766/     # headless Chromium walkthrough (needs chromium)
 node tests/screenshots.mjs                    # regenerate docs/*.png and docs/urgent.gif from a --demo server on :8770 (same PRDASH_HOME)
 ```

@@ -66,7 +66,6 @@ const teamMs = await time("render team board", async () => { await key("3"); awa
 check("team view renders fast", teamMs < 400, `${await app("a.list.length")} PRs`);
 await shot("02-board-team");
 
-// advanced filters
 for (const [q, expect] of [["updated:<3d", n => n >= 0], ["reviewer:@me", n => n >= 0], ["size:>500 -is:draft", n => n >= 0], ["author:zzz-nobody", n => n === 0]]) {
   await app(`a.q = ${JSON.stringify(q)}`); await sleep(150);
   const n = await app("a.list.length");
@@ -114,7 +113,6 @@ await shot("06-batch");
 await key("Escape"); await sleep(100);
 check("esc clears selection", (await app("a.pickedUrls.length")) === 0);
 
-// palette
 await key("k", { ctrlKey: true }); await sleep(150);
 await js(`(() => { const i = document.querySelector(".pal-in input"); i.value = "table"; i.dispatchEvent(new Event("input")); })()`); await sleep(150);
 await shot("07-palette");
@@ -123,7 +121,6 @@ check("palette runs command", (await app("a.layout")) === "table");
 await shot("08-table");
 await app(`a.layout = "board"`);
 
-// panels
 await key("i"); await sleep(400); await shot("09-inbox"); check("inbox opens", (await app("a.panel")) === "inbox"); await key("Escape");
 await key(","); check("settings load", await waitFor(`Alpine.$data(document.body).settings?.fields?.length > 10`, 5000)); await sleep(200); await shot("10-settings");
 await app(`a.settingsTab = "Local"`); await sleep(150); await shot("11-settings-local"); await key("Escape");
@@ -154,7 +151,6 @@ await app(`(a.scope = "team", a.q = "ci:failing", a.preset = "all", a.builderOpe
 await js(`document.querySelector("h1 .home").click()`); await sleep(200);
 check("logo returns home", await app(`a.scope === "mine" && a.q === "" && a.preset === "open" && !a.builderOpen && !a.sel`));
 
-// phone width
 await cdp("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 1, mobile: true }); await sleep(400);
 check("no sideways scroll on phones", !(await js(`document.documentElement.scrollWidth > innerWidth`)));
 await shot("14-mobile");

@@ -100,7 +100,6 @@
   </section>
   <div class="banner" x-show="status.error"><svg class="ic"><use href="/static/icons.svg#triangle-alert"/></svg><span x-text="'Last sync failed: ' + status.error"></span></div>
 
-  <!-- Board -->
   <section class="board" x-show="data && layout === 'board'">
     <template x-for="col in board" :key="col.key">
       <div class="col" :class="'s-' + col.key">
@@ -112,7 +111,6 @@
     </template>
   </section>
 
-  <!-- Table -->
   <div class="tbl-wrap" x-show="data && layout === 'table'">
     <table class="tbl">
       <thead><tr>
@@ -132,7 +130,6 @@
   </div>
 </main>
 
-<!-- batch bar -->
 <div class="batchbar" x-show="pickedUrls.length" x-transition>
   <b x-text="pickedUrls.length + ' selected'"></b>
   <button class="btn" @click="batch('rebase')" :disabled="!!busy.batch">Rebase</button>
@@ -148,7 +145,6 @@
   <button class="icon-btn" @click="clearPicked()" title="Clear selection (esc)"><svg class="ic"><use href="/static/icons.svg#x"/></svg></button>
 </div>
 
-<!-- PR drawer -->
 <div class="scrim" x-show="cur || ['inbox', 'settings', 'standup', 'help'].includes(panel)" x-transition.opacity @click="sel = null; panel = null"></div>
 <aside class="drawer" x-show="cur && !panel" x-transition:enter-start="off" x-transition:leave-end="off">
   <template x-if="pane">
@@ -178,30 +174,41 @@
         <a class="btn" :href="pane.url + '/files'" target="_blank"><svg class="ic"><use href="/static/icons.svg#file-diff"/></svg>Files</a>
       </div>
 
-      <!-- AI review -->
+      <template x-for="c in convoDesc()" :key="c.url">
+        <section>
+          <h4><svg class="ic"><use href="/static/icons.svg#file-text"/></svg> Description</h4>
+          <div class="fold desc" x-data="{ open: false, long: false }" x-init="$nextTick(() => long = $refs.b.scrollHeight > $refs.b.clientHeight + 8)">
+                    <div class="md" x-ref="b" :class="{ clamp: !open, fade: long && !open }" x-html="md(c.text.replace(/^#+\s*description\s*\n/i, ''))"></div>
+                    <button class="more-link" x-show="long" @click="open = !open" x-text="open ? 'Show less' : 'Show more'"></button>
+                  </div>
+        </section>
+      </template>
+
       <section x-show="review(pane).status">
         <h4><svg class="ic"><use href="/static/icons.svg#sparkles"/></svg> <span x-text="cfg.ai_name + ' review'"></span> <span x-text="review(pane).finished ? ago(review(pane).finished * 1000) + ' ago' : review(pane).status === 'running' ? 'running, usually under a minute' : ''"></span></h4>
         <pre class="review-out" :class="{ err: review(pane).status === 'error' }" x-text="review(pane).output || 'Reading the diff…'"></pre>
       </section>
 
-      <!-- Conversation -->
       <section>
         <h4><svg class="ic"><use href="/static/icons.svg#message-square"/></svg> Conversation
-          <span x-show="detail.conversation?.length" x-text="detail.conversation?.length"></span>
+          <span x-show="convoCount()" x-text="convoCount()"></span>
           <a :href="pane.url" target="_blank">open on GitHub</a></h4>
-        <ol class="convo" x-show="detail.conversation?.length">
+        <ol class="convo" x-show="convoCount()">
           <template x-for="g in convo()" :key="g.key">
             <li>
               <template x-if="g.type === 'more'">
-                <button class="convo-more" @click="convoAll = true"><span x-text="'Show ' + g.n + ' more'"></span></button>
+                <button class="convo-more" @click="convoAll = true"><span x-text="'Show ' + g.n + ' earlier'"></span></button>
               </template>
               <template x-if="g.type === 'item'">
-                <div class="ce" :class="{ desc: g.c.what === 'opened' }">
+                <div class="ce">
                   <img class="av" :class="'v-' + g.c.what.replace(' ', '-')" :src="avatar(g.c.who)" alt="" onerror="this.style.visibility='hidden'">
                   <div>
                     <div class="ce-head"><b x-text="g.c.who"></b><span :class="'v-' + g.c.what.replace(' ', '-')" x-text="g.c.what"></span>
                       <a class="t" :href="g.c.url" target="_blank" :title="new Date(g.c.at).toLocaleString()" x-text="ago(g.c.at)"></a></div>
-                    <p x-show="g.c.text" x-data="{ open: false }" :class="{ clamp: !open }" @click="open = !open" x-text="g.c.text"></p>
+                    <template x-if="g.c.text"><div class="fold" x-data="{ open: false, long: false }" x-init="$nextTick(() => long = $refs.b.scrollHeight > $refs.b.clientHeight + 8)">
+                    <div class="md" x-ref="b" :class="{ clamp: !open, fade: long && !open }" x-html="md(g.c.text)"></div>
+                    <button class="more-link" x-show="long" @click="open = !open" x-text="open ? 'Show less' : 'Show more'"></button>
+                  </div></template>
                   </div>
                 </div>
               </template>
@@ -216,7 +223,10 @@
                         <div>
                           <div class="ce-head"><b x-text="c.who"></b>
                             <a class="t" :href="c.url" target="_blank" :title="new Date(c.at).toLocaleString()" x-text="ago(c.at)"></a></div>
-                          <p x-show="c.text" x-data="{ open: false }" :class="{ clamp: !open }" @click="open = !open" x-text="c.text"></p>
+                          <template x-if="c.text"><div class="fold" x-data="{ open: false, long: false }" x-init="$nextTick(() => long = $refs.b.scrollHeight > $refs.b.clientHeight + 8)">
+                    <div class="md" x-ref="b" :class="{ clamp: !open, fade: long && !open }" x-html="md(c.text)"></div>
+                    <button class="more-link" x-show="long" @click="open = !open" x-text="open ? 'Show less' : 'Show more'"></button>
+                  </div></template>
                         </div>
                       </div>
                     </template>
@@ -226,20 +236,19 @@
             </li>
           </template>
         </ol>
-        <div class="dim small" x-show="detail.conversation && !detail.conversation.length">No comments yet.</div>
+        <div class="dim small" x-show="detail.conversation && !convoCount()">No comments yet.</div>
         <div class="dim small" x-show="!detail.conversation && !detail.conversation_error">Loading…</div>
         <div class="err small" x-show="detail.conversation_error" x-text="detail.conversation_error"></div>
         <div class="reply" x-show="!pane.merged">
           <textarea rows="2" x-model="cbody" aria-label="Comment" placeholder="Leave a comment (Ctrl Enter to send)" @keydown.ctrl.enter="cbody && act('comment', pane)" @keydown.meta.enter="cbody && act('comment', pane)"></textarea>
           <div class="acts">
-            <button class="btn" @click="act('request_changes', pane)" :disabled="isBusy('request_changes', pane)">Request changes</button>
-            <button class="btn go" :class="{ armed: armed === 'approve' + pane.url }" @click="act('approve', pane)" :disabled="isBusy('approve', pane)"><svg class="ic"><use href="/static/icons.svg#check"/></svg><span x-text="armed === 'approve' + pane.url ? 'Click to confirm' : 'Approve'"></span></button>
+            <template x-if="pane.author !== data?.me"><button class="btn" @click="act('request_changes', pane)" :disabled="isBusy('request_changes', pane)">Request changes</button></template>
+            <template x-if="pane.author !== data?.me"><button class="btn go" :class="{ armed: armed === 'approve' + pane.url }" @click="act('approve', pane)" :disabled="isBusy('approve', pane)"><svg class="ic"><use href="/static/icons.svg#check"/></svg><span x-text="armed === 'approve' + pane.url ? 'Click to confirm' : 'Approve'"></span></button></template>
             <button class="btn primary" title="Ctrl Enter" @click="act('comment', pane)" :disabled="!cbody || isBusy('comment', pane)">Comment</button>
           </div>
         </div>
       </section>
 
-      <!-- Local checkout -->
       <section>
         <h4><svg class="ic"><use href="/static/icons.svg#folder-git-2"/></svg> On this machine</h4>
         <template x-if="detail.git">
@@ -263,7 +272,6 @@
         <div class="err small" x-show="detail.git_error" x-text="detail.git_error"></div>
       </section>
 
-      <!-- CI -->
       <section>
         <h4><svg class="ic"><use href="/static/icons.svg#circle-play"/></svg> Checks
           <span x-show="detail.checks" x-text="detail.checks ? detail.checks.filter(c => c.state === 'SUCCESS').length + '/' + detail.checks.length + ' passing' : ''"></span></h4>
@@ -280,7 +288,6 @@
           <svg class="ic"><use href="/static/icons.svg#refresh-cw"/></svg>Re-run failed jobs</button>
       </section>
 
-      <!-- Slack -->
       <section x-show="cfg.slack">
         <h4><svg class="ic"><use href="/static/icons.svg#hash"/></svg> Slack
           <a x-show="detail.slack?.link" :href="detail.slack?.link" target="_blank">open thread</a></h4>
@@ -295,7 +302,6 @@
         <div class="err small" x-show="detail.slack_error" x-text="detail.slack_error"></div>
       </section>
 
-      <!-- GitHub facts -->
       <section>
         <h4>GitHub</h4>
         <dl class="kv">
@@ -353,7 +359,6 @@
   </template>
 </aside>
 
-<!-- Inbox -->
 <aside class="drawer" x-show="panel === 'inbox'" x-transition:enter-start="off" x-transition:leave-end="off">
   <div class="d-head">
     <h3>Inbox</h3><span class="grow"></span>
@@ -372,7 +377,6 @@
   <div class="empty" x-show="!events.length"><svg class="ic big"><use href="/static/icons.svg#inbox"/></svg><p>Nothing yet. New reviews, CI changes, comments, and merges on your PRs land here.</p></div>
 </aside>
 
-<!-- Settings -->
 <div class="modal wide" x-show="panel === 'settings'" x-transition.opacity>
   <template x-if="settings">
     <div class="settings">
@@ -417,7 +421,6 @@
   </template>
 </div>
 
-<!-- First-run setup -->
 <div class="modal setup-modal" x-show="panel === 'setup'" x-transition.opacity>
   <div class="setup">
     <template x-if="!setup"><p class="dim">Checking your setup…</p></template>
@@ -506,7 +509,6 @@
   </div>
 </div>
 
-<!-- Command palette -->
 <div class="modal palette" x-show="panel === 'palette'" @click.self="panel = null">
   <div class="pal">
     <label class="pal-in"><svg class="ic"><use href="/static/icons.svg#search"/></svg><input x-ref="pal" x-model="palQ" @input="palI = 0" placeholder="Type a command or search PRs…" spellcheck="false"></label>
@@ -520,7 +522,6 @@
   </div>
 </div>
 
-<!-- Help -->
 <div class="modal" x-show="panel === 'help'" x-transition.opacity>
   <div class="help-grid">
     <button class="close abs" @click="panel = null"><svg class="ic"><use href="/static/icons.svg#x"/></svg></button>
@@ -544,7 +545,6 @@
   </div>
 </div>
 
-<!-- Standup -->
 <div class="modal" x-show="panel === 'standup'" x-transition.opacity>
   <div class="standup">
     <button class="close abs" @click="panel = null"><svg class="ic"><use href="/static/icons.svg#x"/></svg></button>

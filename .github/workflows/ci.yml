@@ -14,6 +14,6 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: "22" }
       - run: python -m unittest discover tests
-      - run: node --test tests/filter.test.mjs
+      - run: node --test tests/filter.test.mjs tests/md.test.mjs
       - name: JS parses as ES modules
         run: for f in prdash/web/js/*.js; do node --input-type=module --check < "$f"; done

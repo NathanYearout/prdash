@@ -465,7 +465,7 @@ class Update(unittest.TestCase):
         git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "two", cwd=f"{root}/origin")
         with mock.patch.object(update, "ROOT", __import__("pathlib").Path(f"{root}/clone")):
             open(f"{root}/clone/f.txt", "w").write("x")
-            git("add", "f.txt", cwd=f"{root}/clone")  # staged local change
+            git("add", "f.txt", cwd=f"{root}/clone")
             self.assertIsNone(update.from_git(), "never pulls over local changes")
             git("reset", "-q", "--hard", cwd=f"{root}/clone")
             self.assertIn("updated", update.from_git())

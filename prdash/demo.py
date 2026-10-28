@@ -113,7 +113,11 @@ def detail(pr):
     at = lambda h: iso(datetime.now(timezone.utc) - timedelta(hours=h))
     reviewer = (pr["reviewers"] or [{"who": "maya-chen"}])[0]["who"]
     convo = [{"who": pr["author"], "what": "opened", "at": pr["created"], "url": pr["url"],
-              "text": f"{pr['title']}.\n\nTested locally against staging; screenshots in the ticket."},
+              "text": "## Description\n\nWebhook deliveries that hit a 429 or 5xx are now retried with exponential backoff, capped at "
+                      "**5 minutes**. Retries are tracked per endpoint in `webhook_attempts`, so a slow receiver can't starve the queue.\n\n"
+                      "Changes include:\n\n- [x] Backoff with jitter in `deliver()`\n- [x] Give up after 8 attempts and mark the delivery failed\n"
+                      "- [ ] Dashboard for failed deliveries (follow-up)\n\n## Testing\n\nTested against staging with a receiver that returns 503 "
+                      "for 10 minutes. Screenshots are in [the ticket](https://acme.atlassian.net/browse/ENG-418)."},
              {"who": "priya-n", "what": "commented", "at": at(30), "url": pr["url"] + "#c1",
               "text": "Do we have numbers on how often this fires in prod? Want to make sure the backoff cap is right."},
              {"who": pr["author"], "what": "commented", "at": at(26), "url": pr["url"] + "#c2",

@@ -88,3 +88,45 @@ export function row(a, p) {
   <td>${a.cfg.ai_terminal ? `<button class="mini accent icon-only" data-act="agent" title="Open in ${esc(a.cfg.ai_name)}">${icon("sparkles")}</button>` : ""}</td>
 </tr>`;
 }
+
+// GitHub markdown for PR descriptions and comments: everything is escaped first, then a small subset is turned back into tags
+// (headings, lists and task lists, quotes, code, bold, italics, http(s) links). Anything else shows as plain text.
+export function md(src) {
+  const refs = {};
+  src = String(src ?? "").replace(/^\[([^\]]+)\]:\s*(https?:\/\/\S+)\s*$/gm, (_, k, u) => ((refs[k.toLowerCase()] = u), ""));
+  const link = (text, url) => `<a href="${url}" target="_blank" rel="noopener">${text}</a>`;
+  const inline = s => esc(s).split(/(`[^`]+`)/).map((part, i) => i % 2 ? `<code>${part.slice(1, -1)}</code>` : part
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, (_, t, u) => link(t, u))
+    .replace(/\[([^\]]+)\](?!\()/g, (m, t) => refs[t.toLowerCase()] ? link(t, esc(refs[t.toLowerCase()])) : m)
+    .replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g, (_, pre, u) => pre + link(u, u))
+    .replace(/\*\*(.+?)\*\*/g, "<b>$1</b>")
+    .replace(/(^|[^\w*])\*([^*\s][^*]*?)\*(?![\w*])/g, "$1<i>$2</i>")).join(""); // * only: _ shows up inside URLs and names
+  const out = [], lines = src.split(/\r?\n/);
+  for (let i = 0; i < lines.length; i++) {
+    const l = lines[i];
+    if (/^\s*```/.test(l)) {
+      const code = [];
+      while (++i < lines.length && !/^\s*```/.test(lines[i])) code.push(lines[i]);
+      out.push(`<pre><code>${esc(code.join("\n"))}</code></pre>`);
+    } else if (/^#{1,6}\s/.test(l)) out.push(`<h5>${inline(l.replace(/^#+\s*/, ""))}</h5>`);
+    else if (/^\s*>/.test(l)) {
+      const q = [l];
+      while (i + 1 < lines.length && /^\s*>/.test(lines[i + 1])) q.push(lines[++i]);
+      const body = q.map(x => x.replace(/^\s*>\s?/, "")).join("\n").trim();
+      if (body) out.push(`<blockquote>${md(body)}</blockquote>`);
+    } else if (/^\s*([-*+]|\d+[.)])\s/.test(l)) {
+      const items = [l];
+      while (i + 1 < lines.length && /^\s*([-*+]|\d+[.)])\s/.test(lines[i + 1])) items.push(lines[++i]);
+      const tag = /^\s*\d/.test(l) ? "ol" : "ul";
+      out.push(`<${tag}>${items.map(x => {
+        const t = x.replace(/^\s*([-*+]|\d+[.)])\s+/, ""), task = t.match(/^\[([ xX])\]\s*/);
+        return task ? `<li class="task${task[1] !== " " ? " done" : ""}"><i></i>${inline(t.slice(task[0].length))}</li>` : `<li>${inline(t)}</li>`;
+      }).join("")}</${tag}>`);
+    } else if (l.trim()) {
+      const para = [l];
+      while (i + 1 < lines.length && lines[i + 1].trim() && !/^\s*(```|#{1,6}\s|>|[-*+]\s|\d+[.)]\s)/.test(lines[i + 1])) para.push(lines[++i]);
+      out.push(`<p>${para.map(inline).join("<br>")}</p>`);
+    }
+  }
+  return out.join("");
+}

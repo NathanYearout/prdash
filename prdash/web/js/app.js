@@ -1,7 +1,7 @@
 // prdash page. One Alpine component; data comes from the local server (/api/state) and live updates over SSE.
 import Alpine from "../vendor/alpine.esm.js";
 import { compile, getTerm, setTerm, SYNTAX } from "./filter.js";
-import { card, row } from "./render.js";
+import { card, md, row } from "./render.js";
 
 const DAY = 864e5;
 
@@ -300,16 +300,20 @@ Alpine.data("prdash", () => ({
     await this.copy(this.slackText(p), "Copied. Paste it in Slack");
     if (!this.L(p).posted) this.setLocal(p, "posted", new Date().toISOString());
   },
-  // the drawer's conversation: inline comments grouped into one thread per file:line, long ones tucked behind "Show N more"
+  md,
+  convoDesc() { return (this.detail.conversation || []).filter(c => c.what === "opened"); },
+  convoCount() { return (this.detail.conversation || []).filter(c => c.what !== "opened").length; },
+  // the drawer's conversation: inline comments grouped into one thread per file:line; older entries tucked behind "Show N earlier"
   convo() {
     const out = [], code = {};
     for (const c of this.detail.conversation || []) {
+      if (c.what === "opened") continue;
       if (!c.path) { out.push({ type: "item", key: c.url + c.at, c }); continue; }
       const k = c.path + ":" + c.line;
       if (!code[k]) out.push(code[k] = { type: "code", key: k, path: c.path, line: c.line, url: c.url, items: [] });
       code[k].items.push(c);
     }
-    return this.convoAll || out.length <= 4 ? out : [out[0], { type: "more", key: "more", n: out.length - 3 }, ...out.slice(-2)];
+    return this.convoAll || out.length <= 4 ? out : [{ type: "more", key: "more", n: out.length - 3 }, ...out.slice(-3)];
   },
   async act(op, p) {
     if (["merge", "close", "approve"].includes(op) && this.armed !== op + p.url) {
