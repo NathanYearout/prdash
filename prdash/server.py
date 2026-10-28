@@ -1,5 +1,5 @@
 """Local HTTP server: the page, a JSON API, and a server-sent-events stream for live updates."""
-import json, queue, secrets, shutil, time
+import hashlib, hmac, json, queue, secrets, shutil, time
 from concurrent.futures import ThreadPoolExecutor
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -40,12 +40,17 @@ def _review_done(pr):
 
 
 def token():
-    t = db.get("token")
-    if not t:
-        legacy = db.HOME / "token"  # pre-SQLite installs kept it in a file
-        t = legacy.read_text().strip() if legacy.exists() else secrets.token_urlsafe(24)
-        db.put("token", t)
-    return t
+    """Master API token for scripts (X-Token). Never sent to a browser. Rotated once (auth v2) because
+    earlier versions put it in a page and then in a cookie, so any copy of the old one stops working."""
+    with db.LOCK:
+        t = db.get("token")
+        if not t or db.get("auth_version", 1) < 2:
+            t = secrets.token_urlsafe(32)
+            db.put("token", t)
+            db.put("sessions", {})
+            db.put("auth_version", 2)
+            (db.HOME / "token").unlink(missing_ok=True)  # pre-SQLite installs kept it in a file
+        return t
 
 
 def login_url(port):
@@ -67,7 +72,7 @@ def use_login_key(key):
     return ok
 
 
-SESSION_DAYS = 30
+SESSION_DAYS = 7
 
 
 def new_session():
@@ -84,6 +89,16 @@ def new_session():
 def valid_session(sid):
     exp = db.get("sessions", {}).get(sid, 0)
     return exp > time.time()
+
+
+def csrf(sid):
+    """Per-session token that only prdash's own page receives (a meta tag in index.html). Other localhost
+    ports get the cookie but can't read this origin's page, so they can't produce it."""
+    return hmac.new(token().encode(), sid.encode(), hashlib.sha256).hexdigest()
+
+
+def logout_all():
+    db.put("sessions", {})
 
 
 LOCKED = b"""<!doctype html><meta charset="utf-8"><title>prdash</title>
@@ -200,12 +215,13 @@ class Handler(BaseHTTPRequestHandler):
         sid = self.session_id()
         if not sid or not valid_session(sid):
             return False
-        if self.headers.get("Sec-Fetch-Site", "same-origin") != "same-origin":
+        # fail closed: every current browser sends Sec-Fetch-Site; anything else is not our page
+        if self.headers.get("Sec-Fetch-Site") != "same-origin":
             return False
-        origin = self.headers.get("Origin")
-        if origin and origin not in (f"http://127.0.0.1:{PORT}", f"http://localhost:{PORT}"):
-            return False
-        return method == "GET" or self.headers.get("X-Prdash") == "1"
+        if method == "GET":
+            return True
+        return (self.headers.get("Origin") in (f"http://127.0.0.1:{PORT}", f"http://localhost:{PORT}")
+                and secrets.compare_digest(self.headers.get("X-Prdash", ""), csrf(sid)))
 
     def trusted(self, path, qs, method):
         # Host check blocks DNS rebinding; authed() blocks other pages, including other localhost ports
@@ -238,11 +254,13 @@ class Handler(BaseHTTPRequestHandler):
                         self.send_header("Location", "/")
                         self.send_header("Set-Cookie", f"prdash{PORT}={new_session()}; Path=/; HttpOnly; SameSite=Strict; "
                                                        f"Max-Age={SESSION_DAYS * 86400}")
+                        self.send_header("Set-Cookie", "prdash=; Path=/; Max-Age=0")  # pre-session versions held the token here
                         self.send_header("Content-Length", "0")
                         return self.end_headers()
                     if not valid_session(self.session_id()):
                         return self.send(401, LOCKED, "text/html; charset=utf-8")
-                    return self.send(200, (WEB / "index.html").read_bytes(), "text/html; charset=utf-8")
+                    page = (WEB / "index.html").read_text().replace("__CSRF__", csrf(self.session_id()))
+                    return self.send(200, page, "text/html; charset=utf-8")
                 if path.startswith("/static/"):
                     f = (WEB / path[8:]).resolve()
                     if f.is_relative_to(WEB) and f.is_file() and f.suffix in TYPES:

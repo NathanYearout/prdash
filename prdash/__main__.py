@@ -25,13 +25,16 @@ def main():
     ap.add_argument("--port", type=int, default=int(os.environ.get("PRDASH_PORT", 8765)))
     ap.add_argument("--no-open", action="store_true", help="don't open a browser tab")
     ap.add_argument("--demo", action="store_true", help="try it with a fictional org; nothing touches GitHub")
-    ap.add_argument("command", nargs="*", help="`url` prints a one-time login link; `service install|uninstall|status` runs prdash from login")
+    ap.add_argument("command", nargs="*", help="`url` prints a one-time login link; `logout` signs out every browser; `service install|uninstall|status`")
     args = ap.parse_args()
     if args.command[:1] == ["service"]:
         from . import service
         return service.main((args.command[1:] or [""])[0], args.port)
     if args.command == ["url"]:  # a one-time login link, e.g. for another browser
         return print(server.login_url(args.port))
+    if args.command == ["logout"]:
+        server.logout_all()
+        return print("Signed out every browser. Run `prdash` to sign in again.")
     if args.command:
         ap.error(f"unknown command {' '.join(args.command)}")
     url = f"http://127.0.0.1:{args.port}/"

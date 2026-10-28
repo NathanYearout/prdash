@@ -263,7 +263,8 @@ class Server(unittest.TestCase):
         except HTTPError as e:
             with e:
                 self.assertEqual(e.code, 303)
-                cookie = e.headers["Set-Cookie"]
+                cookie = e.headers.get_all("Set-Cookie")[0]
+                self.assertIn("prdash=; Path=/; Max-Age=0", e.headers.get_all("Set-Cookie"), "legacy cookie cleared")
         self.assertIn("HttpOnly", cookie)
         self.assertIn("SameSite=Strict", cookie)
         self.assertEqual(self.req(f"/?key={key}")[0], 401, "login links work once")
@@ -278,8 +279,15 @@ class Server(unittest.TestCase):
         # another localhost port gets the cookie too (browsers don't isolate ports), but that's not enough
         self.assertEqual(self.req("/api/events", cookie=session, headers={"Sec-Fetch-Site": "same-site"})[0], 403)
         self.assertEqual(self.req("/api/sync", cookie=session, body={}, headers={"Origin": "http://127.0.0.1:3000"})[0], 403)
-        self.assertEqual(self.req("/api/sync", cookie=session, body={}, headers=same)[0], 403, "writes need X-Prdash")
-        self.assertEqual(self.req("/api/sync", cookie=session, body={}, headers={**same, "X-Prdash": "1"})[0], 200)
+        self.assertEqual(self.req("/api/events", cookie=session)[0], 403, "fails closed without Sec-Fetch-Site")
+        self.assertEqual(self.req("/api/sync", cookie=session, body={}, headers=same)[0], 403, "writes need the CSRF token")
+        self.assertEqual(self.req("/api/sync", cookie=session, body={}, headers={**same, "X-Prdash": "1"})[0], 403)
+        token_meta = body.decode().split('name="csrf" content="')[1].split('"')[0]
+        self.assertEqual(self.req("/api/sync", cookie=session, body={}, headers={**same, "X-Prdash": token_meta})[0], 200)
+        self.assertEqual(self.req("/api/sync", cookie=session, body={},
+                                  headers={"Sec-Fetch-Site": "same-origin", "X-Prdash": token_meta})[0], 403, "writes need Origin")
+        server.logout_all()
+        self.assertEqual(self.req("/api/events", cookie=session, headers=same)[0], 403, "logout revokes sessions")
 
     def test_check_links_are_http_only(self):
         self.assertIsNone(github.safe_url("javascript:alert(1)"))

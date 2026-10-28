@@ -49,10 +49,12 @@ const BUILDER = [ // filter builder rows: [key, label, options or "people"/"repo
   ["has", "Has", [["jira", "Ticket"], ["note", "Note"], ["tags", "Tags"], ["waiting", "Waiting on"], ["review", "Claude review"]]],
 ];
 
+const CSRF = document.querySelector('meta[name="csrf"]').content;
+
 async function api(path, body) {
   const r = await fetch(path, {
     method: body ? "POST" : "GET",
-    headers: { "Content-Type": "application/json", "X-Prdash": "1" }, // required on writes, see server.authed()
+    headers: { "Content-Type": "application/json", "X-Prdash": CSRF }, // required on writes, see server.authed()
     body: body && JSON.stringify(body),
   });
   if (r.status === 403) throw new Error("Signed out. Run `prdash` to open a fresh session.");
