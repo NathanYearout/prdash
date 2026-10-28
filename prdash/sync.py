@@ -46,7 +46,12 @@ def diff(old, new, me, review_before, review_after):
     events = []
     for url in review_after - review_before:
         if url in new:
-            events.append((url, "review_requested", f'{new[url]["author"]} requested your review: {label(new[url])}'))
+            kind, verb = ("urgent", "needs your review urgently") if new[url].get("urgent") else ("review_requested", "requested your review")
+            events.append((url, kind, f'{new[url]["author"]} {verb}: {label(new[url])}'))
+    for url, n in new.items():  # bumps on your PRs or on PRs waiting for your review
+        b, o = n.get("bump"), old.get(url)
+        if b and o and b != o.get("bump") and b["who"] != me and (n["author"] == me or url in review_after):
+            events.append((url, "bump", f'{b["who"]} bumped {label(n)}'))
     for url, n in new.items():
         o = old.get(url)
         if not o or n["author"] != me:

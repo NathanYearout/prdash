@@ -144,6 +144,7 @@ a.chip.jira:hover { text-decoration: none; background: color-mix(in srgb, var(--
 .chip.flag.red { color: var(--red); background: color-mix(in srgb, var(--red) 11%, transparent); }
 .chip.flag.amber { color: var(--amber); background: color-mix(in srgb, var(--amber) 11%, transparent); }
 .chip.flag.muted { color: var(--dim); background: color-mix(in srgb, var(--dim) 10%, transparent); }
+.chip.flag.urgent { color: #fff; background: var(--red); font-weight: 650; text-transform: uppercase; letter-spacing: .04em; }
 .chip.rv-APPROVED { color: var(--green); } .chip.rv-CHANGES_REQUESTED { color: var(--red); } .chip.rv-REQUESTED { color: var(--amber); }
 .rv-APPROVED { color: var(--green); } .rv-CHANGES_REQUESTED { color: var(--red); } .rv-REVIEW_REQUIRED { color: var(--amber); }
 .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--line-hi); flex: none; }
@@ -187,6 +188,22 @@ main { padding: 18px 24px 60px; }
 .card:hover { border-color: var(--line-hi); transform: translateY(-1px); }
 .card.sel { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
 .card.focus { outline: 2px solid color-mix(in srgb, var(--accent) 60%, transparent); outline-offset: -1px; }
+/* urgent: a pulsing red glow, and a short shake every few seconds */
+.card.urgent { border-color: color-mix(in srgb, var(--red) 70%, var(--line)); animation: urgent-glow 1.6s ease-in-out infinite, urgent-shake 4.5s ease-in-out infinite; }
+.card.urgent::before { background: var(--red); width: 4px; }
+@keyframes urgent-glow {
+  0%, 100% { box-shadow: 0 0 0 1px color-mix(in srgb, var(--red) 35%, transparent), 0 0 12px color-mix(in srgb, var(--red) 18%, transparent); }
+  50% { box-shadow: 0 0 0 2px color-mix(in srgb, var(--red) 70%, transparent), 0 0 28px color-mix(in srgb, var(--red) 45%, transparent); }
+}
+@keyframes urgent-shake {
+  0%, 84%, 100% { transform: none; }
+  86% { transform: translateX(-4px) rotate(-1deg); } 88% { transform: translateX(4px) rotate(1deg); }
+  90% { transform: translateX(-3px) rotate(-.6deg); } 92% { transform: translateX(3px) rotate(.6deg); }
+  94% { transform: translateX(-1px); } 96% { transform: translateX(1px); }
+}
+.card.urgent:hover { animation-play-state: paused; }
+.tbl tr.urgent td:first-child { box-shadow: inset 3px 0 0 var(--red); }
+@media (prefers-reduced-motion: reduce) { .card.urgent { animation: none; box-shadow: 0 0 0 2px color-mix(in srgb, var(--red) 55%, transparent); } }
 .card.picked { background: color-mix(in srgb, var(--accent) 9%, var(--card)); border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); }
 .card-top { display: flex; align-items: center; gap: 6px; }
 .card-top .num { margin: 0; }
@@ -277,7 +294,7 @@ main { padding: 18px 24px 60px; }
 .events li.unread::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); margin: 6px -4px 0 -2px; flex: none; }
 .events .ic { margin-top: 2px; }
 .k-ci_failed, .k-conflict, .k-review_error, .k-jira_error { color: var(--red); } .k-ci_passed, .k-merged { color: var(--green); }
-.k-review_requested { color: var(--amber); } .k-review_done { color: var(--violet); }
+.k-review_requested, .k-bump { color: var(--amber); } .k-review_done { color: var(--violet); } .k-urgent { color: var(--red); }
 
 /* ---- modals: settings, palette, help, standup, setup ---- */
 .modal { position: fixed; inset: 0; z-index: 12; display: grid; place-items: start center; padding: 8vh 16px 16px; overflow-y: auto; }
@@ -332,6 +349,7 @@ main { padding: 18px 24px 60px; }
 .pickbox b { font-weight: 500; font-size: 11px; }
 .tools { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 8px; }
 .tools label { display: grid; gap: 4px; font-size: 12px; color: var(--dim); }
+.tools.single { grid-template-columns: 1fr; margin-top: 10px; }
 .setup-foot { display: flex; align-items: center; gap: 16px; justify-content: space-between; margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--line); }
 
 /* ---- phones ---- */

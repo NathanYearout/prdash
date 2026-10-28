@@ -58,6 +58,16 @@ Draft → Needs work → In review → Approved → Merged across every org you 
 <td width="50%"><img src="docs/table.png" alt="Table view of team PRs"></td>
 </tr>
 <tr>
+<td colspan="2" align="center">
+
+### Urgent PRs shake. Bumps get a clock.
+Put **urgent** in a title (or an `urgent` label) and the card pulses red, shakes every few seconds, and jumps to the top of its column. Someone comments **bump** and the card shows who and when, and it lands in your inbox. Reduced-motion settings get the glow without the shake.
+
+<img src="docs/urgent.gif" alt="An urgent PR card glowing red and shaking next to a card with a Bumped chip" width="720">
+
+</td>
+</tr>
+<tr>
 <td><img src="docs/pr-panel.png" alt="PR panel with a Claude review, local checkout, and CI checks"></td>
 <td valign="top">
 
@@ -87,8 +97,8 @@ Draft → Needs work → In review → Approved → Merged across every org you 
 <tr>
 <td valign="top">
 
-### An inbox for what changed
-New review requests, approvals and change requests, comments, CI going red or green, conflicts, merges, finished Claude reviews. You get browser notifications, or system notifications through any command (`notify-send prdash {text}`) even with no tab open.
+### Notifications for what changed
+New review requests, bumps, approvals and change requests, comments, CI going red or green, conflicts, merges, and finished Claude reviews. They land in the inbox, pop up as browser notifications, and go to your desktop even with no tab open (`notify-send` or `terminal-notifier` are picked up automatically). Urgent review requests stay on screen until you dismiss them.
 
 </td>
 <td><img src="docs/inbox.png" alt="Inbox with review, CI, and merge events"></td>
@@ -127,7 +137,7 @@ Terms AND together, commas OR within a term, and a leading `-` negates. Bare wor
 | `updated:<3d` · `created:>2w` · `merged:<7d` | Within or older than: `h` `d` `w` `m` `y` |
 | `size:>500` · `size:xl` · `files:>20` · `comments:>5` · `prio:>=2` | Numbers; sizes are xs s m l xl |
 | `ci:failing` · `review:changes` | CI: failing passing pending none · review: approved changes needed none |
-| `is:draft` · `is:stale` · `is:mine` · `is:conflict` | Also open, merged, approved, needs-work, in-review, posted, snoozed, hidden |
+| `is:urgent` · `is:bumped` · `is:stale` · `is:mine` | Also draft, open, merged, approved, needs-work, in-review, conflict, posted, snoozed, hidden |
 | `has:jira` · `-has:note` | Also tags, waiting, review (Claude), labels, reviewers |
 
 ## Keyboard

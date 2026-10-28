@@ -170,6 +170,7 @@ def setup_info():
     claude = config.expand(config.get("claude_cmd"))
     return {"me": github.viewer(), "orgs": orgs, "selected": github.owners(), "dirs": local.find_clone_dirs(),
             "repo_dirs": config.get("repo_dirs"), "terminal": config.get("terminal"), "editor": config.get("editor"),
+            "notify_cmd": config.get("notify_cmd"),
             "claude": bool(claude and shutil.which(claude[0]))}
 
 
@@ -178,6 +179,8 @@ def setup_save(b):
     for key in ("repo_dirs", "terminal", "editor"):
         if b.get(key):
             config.put(key, b[key])
+    if "notify_cmd" in b:  # empty is a valid choice: no system notifications
+        config.put("notify_cmd", b["notify_cmd"].strip())
     db.put("orgs_auto", None)
     db.put("setup_done", True)
     sync.now()
@@ -196,7 +199,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(data)))
-        self.send_header("Cache-Control", "max-age=86400" if ctype in ("font/woff2", "image/svg+xml") else "no-store")
+        # fonts never change; everything else revalidates so upgrades (like new icons) show up right away
+        self.send_header("Cache-Control", "max-age=31536000, immutable" if ctype == "font/woff2" else "no-cache")
         self.end_headers()
         self.wfile.write(data)
 

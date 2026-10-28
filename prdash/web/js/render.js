@@ -32,7 +32,7 @@ const PICK = `<button class="pick" data-act="pick" title="Select (x, shift-click
 
 export function card(a, p) {
   const l = a.L(p), r = a.review(p), prio = l.prio || 0;
-  const cls = (l.hidden || l.snooze) ? "card hid" : "card";
+  const cls = ["card", (l.hidden || l.snooze) && "hid", p.urgent && !p.merged && "urgent"].filter(Boolean).join(" ");
   const chipHtml = chips(a, p);
   return `<article class="${cls}" data-url="${esc(p.url)}">
   <div class="card-top">
@@ -64,7 +64,7 @@ export function card(a, p) {
 
 export function row(a, p) {
   const l = a.L(p), prio = l.prio || 0;
-  const cls = (l.hidden || l.snooze) ? "hid" : "";
+  const cls = [(l.hidden || l.snooze) && "hid", p.urgent && !p.merged && "urgent"].filter(Boolean).join(" ");
   return `<tr class="${cls}" data-url="${esc(p.url)}">
   <td class="pickcol">${PICK}</td>
   <td><span class="prio p${prio}">${"●".repeat(prio) || "·"}</span></td>

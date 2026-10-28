@@ -15,7 +15,7 @@ NODE = {
     "state": "OPEN", "createdAt": "2026-10-01T00:00:00Z", "updatedAt": "2026-10-02T00:00:00Z", "mergedAt": None, "closedAt": None,
     "additions": 1, "deletions": 2, "changedFiles": 1, "headRefName": "fix/ABC-12-thing", "baseRefName": "main",
     "mergeable": "MERGEABLE", "reviewDecision": None, "author": None, "mergedBy": None,
-    "repository": {"name": "web", "owner": {"login": "acme"}}, "labels": {"nodes": []}, "comments": {"totalCount": 0},
+    "repository": {"name": "web", "owner": {"login": "acme"}}, "labels": {"nodes": []}, "comments": {"totalCount": 0, "nodes": []},
     "reviewRequests": {"nodes": [{"requestedReviewer": {"login": "alice"}}, {"requestedReviewer": {"slug": "devs"}}]},
     "latestReviews": {"nodes": [{"author": {"login": "alice"}, "state": "APPROVED", "submittedAt": "x"}]},
     "commits": {"nodes": []},
@@ -42,6 +42,17 @@ class Status(unittest.TestCase):
         for over, want in cases:
             self.assertEqual(github.status(pr(**over)), want, over)
 
+    def test_bump_and_urgent(self):
+        c = lambda body, who="bob", at="2026-10-05T00:00:00Z": {"body": body, "createdAt": at, "author": {"login": who}}
+        self.assertEqual(github.bump([c("bump"), c("LGTM")]), {"who": "bob", "at": "2026-10-05T00:00:00Z"})
+        self.assertEqual(github.bump([c("Friendly bump 🙏", "dana", "2026-10-06T00:00:00Z")])["who"], "dana")
+        self.assertIsNone(github.bump([c("We should bump the version before release and update the changelog too")]),
+                          "long comments that mention bumping a version aren't bumps")
+        self.assertIsNone(github.bump([c("Looks good")]))
+        self.assertTrue(github.flatten({**NODE, "title": "URGENT: fix login"})["urgent"])
+        self.assertTrue(github.flatten({**NODE, "labels": {"nodes": [{"name": "urgent"}]}})["urgent"])
+        self.assertFalse(github.flatten(NODE)["urgent"])
+
     def test_allowed(self):
         self.assertTrue(github.allowed("https://github.com/acme/web/pull/1"))
         self.assertTrue(github.allowed("https://github.com/ACME/web/pull/1"))
@@ -65,6 +76,17 @@ class Inbox(unittest.TestCase):
         u = NODE["url"]
         self.assertEqual(sync.diff({u: pr(author="bob")}, {u: pr(author="bob", ci="FAILURE")}, "me", set(), set()), [])
         self.assertEqual(sync.diff({}, {u: pr(author="me", ci="FAILURE")}, "me", set(), set()), [])
+
+    def test_bump_and_urgent_events(self):
+        u = NODE["url"]
+        b = {"who": "bob", "at": "2026-10-05T00:00:00Z"}
+        kinds = lambda old, new, review=set(): [k for _, k, _ in sync.diff(old, new, "me", review, review)]
+        self.assertEqual(kinds({u: pr(author="me")}, {u: pr(author="me", bump=b)}), ["bump"])
+        self.assertEqual(kinds({u: pr(author="me", bump=b)}, {u: pr(author="me", bump=b)}), [], "same bump only once")
+        self.assertEqual(kinds({u: pr(author="carol")}, {u: pr(author="carol", bump=b)}, {u}), ["bump"], "bumps in your queue")
+        self.assertEqual(kinds({u: pr(author="me")}, {u: pr(author="me", bump={**b, "who": "me"})}), [], "your own bump")
+        events = sync.diff({}, {u: pr(author="bob", urgent=True)}, "me", set(), {u})
+        self.assertEqual(events[0][1], "urgent")
 
     def test_review_requested(self):
         u = NODE["url"]

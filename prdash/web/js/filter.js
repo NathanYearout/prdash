@@ -18,7 +18,7 @@ export const SYNTAX = [
   ["updated:<3d  created:>2w  merged:<7d", "Within / older than: h d w m y"],
   ["size:>500  size:xl  files:>20", "Lines changed (or xs s m l xl), files changed"],
   ["ci:failing  review:approved", "ci: failing passing pending none · review: approved changes needed none"],
-  ["is:draft  is:stale  is:mine", "draft open merged approved needs-work in-review mine stale snoozed hidden posted conflict"],
+  ["is:urgent  is:bumped  is:stale", "Also draft open merged approved needs-work in-review mine snoozed hidden posted conflict"],
   ["has:jira  -has:note", "jira note tags review waiting slack labels"],
   ["label:bug  tag:blocked  jira:ENG-4", "GitHub label, your tag, ticket key prefix"],
   ["waiting:qa  prio:>=2  comments:>5", "Your waiting-on text, priority 0-3, comment count"],
@@ -91,6 +91,7 @@ const IS = {
   mine: (p, c) => p.author === c.me, stale: (p, c) => !p.merged && (c.now - new Date(p.updated)) / DAY > c.staleDays,
   snoozed: (p, c) => !!c.L(p).snooze, hidden: (p, c) => !!c.L(p).hidden, posted: (p, c) => !!c.L(p).posted,
   conflict: p => p.mergeable === "CONFLICTING", failing: p => CI.failing.includes(p.ci),
+  urgent: p => !!p.urgent, bumped: p => !!p.bump,
 };
 const HAS = {
   jira: p => p.jira.length > 0, note: (p, c) => !!c.L(p).note, tags: (p, c) => !!c.L(p).tags, waiting: (p, c) => !!c.L(p).waiting,

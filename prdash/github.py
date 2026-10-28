@@ -7,6 +7,8 @@ from . import config, db
 
 PR_URL = re.compile(r"^https://github\.com/[\w.-]+/[\w.-]+/pull/\d+$")
 JIRA_KEY = re.compile(r"\b[A-Z][A-Z0-9]+-\d+\b")
+BUMP = re.compile(r"\bbump(ed|ing)?\b", re.I)
+URGENT = re.compile(r"\burgent\b", re.I)
 VIEWS = {"mine": "author:@me", "review": "review-requested:@me", "team": ""}
 
 PR_FIELDS = """
@@ -15,7 +17,7 @@ PR_FIELDS = """
   author { login } mergedBy { login }
   repository { name owner { login } }
   labels(first: 10) { nodes { name } }
-  comments { totalCount }
+  comments(last: 10) { totalCount nodes { body createdAt author { login } } }
   reviewRequests(first: 10) { nodes { requestedReviewer { ... on User { login } ... on Team { slug } } } }
   latestReviews(first: 15) { nodes { author { login } state submittedAt } }
   commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
@@ -77,6 +79,12 @@ def status(p):
     return "in_review"
 
 
+def bump(comments):
+    """The latest short "bump" comment ("bump", "friendly bump 🙏", "bumping this"), as {who, at}."""
+    hits = [c for c in comments if c and len((c["body"] or "").strip()) <= 40 and BUMP.search(c["body"] or "")]
+    return {"who": (hits[-1]["author"] or {}).get("login", "ghost"), "at": hits[-1]["createdAt"]} if hits else None
+
+
 def flatten(n):
     commits = n["commits"]["nodes"]
     rollup = commits and commits[0]["commit"]["statusCheckRollup"]
@@ -94,6 +102,8 @@ def flatten(n):
         "review": n["reviewDecision"], "ci": rollup["state"] if rollup else None,
         "labels": [l["name"] for l in n["labels"]["nodes"]],
         "comments": n["comments"]["totalCount"],
+        "bump": bump(n["comments"]["nodes"]),
+        "urgent": bool(URGENT.search(n["title"])) or any(URGENT.search(l["name"]) for l in n["labels"]["nodes"]),
         "jira": sorted(set(JIRA_KEY.findall(n["title"] + " " + n["headRefName"]))),
         "reviewers": [{"who": k, "state": v} for k, v in reviewed.items()]
         + [{"who": r, "state": "REQUESTED"} for r in requested if r not in reviewed],

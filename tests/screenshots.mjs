@@ -1,7 +1,7 @@
 // Regenerates the README screenshots from demo mode (fictional data only).
 //   PRDASH_HOME=/tmp/demo python3 -m prdash --demo --no-open --port 8770 &   PRDASH_HOME=/tmp/demo node tests/screenshots.mjs
 import { execFileSync, spawn } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 
 const URL = process.env.URL || "http://127.0.0.1:8770/";
 const OUT = new globalThis.URL("../docs/", import.meta.url).pathname;
@@ -43,5 +43,25 @@ await reset(); await app("a.openInbox()"); await shot("inbox");
 await reset(`, a.panel = "setup", a.setup = { me: "octo-dev", orgs: ["acme", "acme-labs", "oss-tools"], picked: { acme: true, "acme-labs": true },
   dirs: [{ path: "~/code", repos: 23, on: true }, { path: "~/work/acme", repos: 11, on: true }, { path: "~/Documents/experiments", repos: 4, on: false }],
   terminal: "kitty --directory {dir}", editor: "{terminal} nvim .", claude: true }`); await shot("setup");
+
+// docs/urgent.gif: step the CSS animations frame by frame (paused Web Animations), so the GIF is smooth and exact
+await reset();
+await cdp("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+await sleep(400);
+const box = await js(`(() => {
+  const u = document.querySelector(".card.urgent").getBoundingClientRect(), b = document.querySelector(".col.s-needs_work .card").getBoundingClientRect();
+  return { x: Math.round(b.left) - 16, y: Math.round(Math.min(u.top, b.top)) - 46, width: Math.round(u.right - b.left) + 32, height: Math.round(Math.max(u.bottom, b.bottom) - Math.min(u.top, b.top)) + 62 };
+})()`);
+const FRAMES = new globalThis.URL("./out/gif-frames/", import.meta.url).pathname;
+rmSync(FRAMES, { recursive: true, force: true }); mkdirSync(FRAMES, { recursive: true });
+for (let i = 0, t = 0; t < 4500; i++, t += 50) {
+  await js(`document.getAnimations().forEach(a => { a.pause(); a.currentTime = ${t}; })`);
+  const r = await cdp("Page.captureScreenshot", { format: "png", clip: { ...box, scale: 1 } });
+  writeFileSync(`${FRAMES}/${String(i).padStart(3, "0")}.png`, Buffer.from(r.result.data, "base64"));
+}
+execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-framerate", "20", "-i", `${FRAMES}/%03d.png`, "-vf",
+  "split[a][b];[a]palettegen=max_colors=128:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle",
+  "-loop", "0", `${OUT}/urgent.gif`]);
+console.log("docs/urgent.gif");
 
 ws.close(); chrome.kill(); process.exit(0);

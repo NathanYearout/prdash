@@ -35,7 +35,7 @@ const PERSISTED = ["scope", "preset", "layout", "q", "sort", "dir", "showHidden"
 const EVENT_ICON = {
   review_requested: "eye", review: "message-square", comment: "message-square", ci_failed: "triangle-alert", ci_passed: "check",
   merged: "git-merge", closed: "x", conflict: "triangle-alert", snooze: "clock", review_done: "sparkles", review_error: "triangle-alert",
-  jira: "ticket", jira_error: "triangle-alert",
+  jira: "ticket", jira_error: "triangle-alert", bump: "alarm-clock", urgent: "siren",
 };
 const BUILDER = [ // filter builder rows: [key, label, options or "people"/"repos"]
   ["author", "Author", "people"], ["reviewer", "Reviewer", "people"], ["requested", "Review requested from", "people"],
@@ -45,7 +45,7 @@ const BUILDER = [ // filter builder rows: [key, label, options or "people"/"repo
   ["size", "Size", [["xs", "XS (<10 lines)"], ["s", "S (<100)"], ["m", "M (<500)"], ["l", "L (<1000)"], ["xl", "XL (1000+)"]]],
   ["ci", "CI", [["failing", "Failing"], ["pending", "Pending"], ["passing", "Passing"], ["none", "No checks"]]],
   ["review", "Review", [["needed", "Needed"], ["changes", "Changes requested"], ["approved", "Approved"], ["none", "None"]]],
-  ["is", "Is", [["draft", "Draft"], ["stale", "Stale"], ["conflict", "Conflicting"], ["posted", "Posted to Slack"], ["snoozed", "Snoozed"]]],
+  ["is", "Is", [["urgent", "Urgent"], ["bumped", "Bumped"], ["draft", "Draft"], ["stale", "Stale"], ["conflict", "Conflicting"], ["posted", "Posted to Slack"], ["snoozed", "Snoozed"]]],
   ["has", "Has", [["jira", "Ticket"], ["note", "Note"], ["tags", "Tags"], ["waiting", "Waiting on"], ["review", "Claude review"]]],
 ];
 
@@ -84,7 +84,8 @@ Alpine.data("prdash", () => ({
   scope: "mine", preset: "open", layout: "board", q: "", sort: "updated", dir: -1, showHidden: false,
   rev: 0, cfg: {}, status: { syncing: false, at: null, error: null }, now: Date.now(), sel: null, focus: null, picked: {}, detail: {}, detailFor: null,
   cbody: "", armed: null, busy: {}, toastMsg: "", toastErr: false, panel: null, palQ: "", palI: 0, settings: null,
-  settingsTab: "GitHub", events: [], standupText: "", builderOpen: false, saved: [], more: {}, setup: null, naming: null, tagging: null, lastPicked: null,
+  settingsTab: "GitHub", events: [], standupText: "", builderOpen: false, saved: [], more: {}, setup: null,
+  notifyPermission: "Notification" in window ? Notification.permission : "unsupported", naming: null, tagging: null, lastPicked: null,
 
   init() {
     try { Object.assign(this, JSON.parse(localStorage.prdash || "{}")); } catch {}
@@ -157,7 +158,8 @@ Alpine.data("prdash", () => ({
     return memo("board", [list, preset, scope, rev, more], () => {
       const want = PRESETS[preset].statuses, groups = {};
       for (const p of list) (groups[p.status] ||= []).push(p);
-      const byPrio = (a, b) => (this.L(b).prio || 0) - (this.L(a).prio || 0); // stable: keeps the chosen sort within a priority
+      // urgent first, then your priority; stable, so the chosen sort holds within each
+      const byPrio = (a, b) => (!!b.urgent - !!a.urgent) || (this.L(b).prio || 0) - (this.L(a).prio || 0);
       return STATUSES.filter(s => (!want || want.includes(s.key)) && !(s.key === "merged" && scope === "review")).map(s => {
         const all = (groups[s.key] || []).sort(byPrio);
         return { ...s, total: all.length, prs: more[s.key] ? all : all.slice(0, COL_LIMIT) };
@@ -234,6 +236,8 @@ Alpine.data("prdash", () => ({
   // [short, tone, icon, sentence]: why it's in Needs work, plus workflow nudges
   flags(p) {
     const f = [], idle = this.ago(p.updated);
+    if (p.urgent && !p.merged) f.push(["Urgent", "urgent", "siren", "Marked urgent"]);
+    if (p.bump && !p.merged) f.push([`Bumped ${this.ago(p.bump.at)}`, "amber", "alarm-clock", `${p.bump.who} bumped this ${this.ago(p.bump.at)} ago`]);
     if (p.ci === "FAILURE" || p.ci === "ERROR") f.push(["CI", "red", "triangle-alert", "CI is failing"]);
     if (p.review === "CHANGES_REQUESTED") f.push(["Changes", "red", "message-square", "Changes requested"]);
     if (p.mergeable === "CONFLICTING") f.push(["Conflicts", "red", "triangle-alert", `Merge conflicts with ${p.base}`]);
@@ -350,11 +354,12 @@ Alpine.data("prdash", () => ({
   notify(events) {
     if (!this.cfg.notify_browser || !("Notification" in window) || Notification.permission !== "granted") return;
     events.slice(0, 3).forEach(ev => {
-      const n = new Notification("prdash", { body: ev.text, tag: ev.url + ev.kind });
+      const n = new Notification(ev.kind === "urgent" ? "prdash: urgent" : "prdash", { body: ev.text, tag: ev.url + ev.kind,
+                                     icon: "/static/logo.svg", requireInteraction: ev.kind === "urgent" });
       n.onclick = () => { window.focus(); if (ev.url) this.sel = ev.url; };
     });
   },
-  async askNotify() { const p = await Notification.requestPermission(); this.toast(p === "granted" ? "Desktop notifications on" : "Notifications blocked by the browser", p !== "granted"); },
+  async askNotify() { const p = await Notification.requestPermission(); this.notifyPermission = p; this.toast(p === "granted" ? "Desktop notifications on" : "Notifications blocked by the browser", p !== "granted"); },
   async openSettings() {
     this.panel = "settings";
     try { this.settings = await api("/api/settings"); } catch (e) { this.toast(e.message, true); }
@@ -402,7 +407,7 @@ Alpine.data("prdash", () => ({
     const s = this.setup;
     try {
       await api("/api/setup", { orgs: s.orgs.filter(o => s.picked[o]), repo_dirs: s.dirs.filter(d => d.on).map(d => d.path).join(":"),
-                                terminal: s.terminal, editor: s.editor });
+                                terminal: s.terminal, editor: s.editor, notify_cmd: s.notify_cmd });
       this.panel = null; this.toast("You're set. First sync takes a few seconds."); this.load();
     } catch (e) { this.toast(e.message, true); }
   },

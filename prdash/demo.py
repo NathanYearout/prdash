@@ -12,7 +12,7 @@ TITLES = [
     "Fix race in session refresh", "Migrate cron jobs to the queue worker", "Bump TypeScript to 5.6", "Rate-limit the public search API",
     "Paginate the audit log export", "Show billing usage per workspace", "Drop the legacy v1 auth endpoints", "Speed up cold starts on mobile",
     "Add Terraform module for the read replica", "Validate refund amounts against the original charge", "Stream CSV exports instead of buffering",
-    "Fix timezone bug in scheduled reports", "Add SSO login with SAML", "Document the webhook signature scheme", "Reduce p95 latency on checkout",
+    "Fix timezone bug in scheduled reports", "URGENT: Roll back the broken session cookie change", "Document the webhook signature scheme", "Reduce p95 latency on checkout",
     "Lazy-load the analytics dashboard", "Handle 429s from the payment provider", "Add feature flags for the new editor",
     "Move secrets to the vault provider", "Fix flaky end-to-end test for invites", "Support multiple currencies on invoices",
     "Add CODEOWNERS for infra", "Upgrade Postgres client and pool settings", "Show offline banner in the mobile app", "Trim Docker image by 300MB",
@@ -57,10 +57,16 @@ def make_prs():
             "review": {"approved": "APPROVED", "merged": "APPROVED", "changes": "CHANGES_REQUESTED"}.get(kind, "REVIEW_REQUIRED"),
             "ci": {"needs_ci": "FAILURE", "draft": "PENDING"}.get(kind, rnd.choice(["SUCCESS", "SUCCESS", "SUCCESS", "PENDING"])),
             "labels": rnd.choice(LABELS), "comments": rnd.randint(0, 9), "jira": [key] if key else [], "reviewers": reviewers,
+            "bump": {"who": rnd.choice(PEOPLE), "at": iso(now - timedelta(hours=rnd.uniform(2, 40)))} if i in (12, 21, 22) else None,
+            "urgent": bool(github.URGENT.search(title)),
         }
         p["status"] = github.status(p)
         prs[p["url"]] = p
     return prs
+
+
+def label(p):
+    return f"{p['repo']}#{p['number']} {p['title']}"
 
 
 def seed():
@@ -95,7 +101,9 @@ def seed():
                    (urls[1], "ci_failed", "CI failed: web#127 Add dark mode to the settings page"),
                    (urls[4], "review_requested", "theo-park requested your review: infra#148 Migrate cron jobs to the queue worker"),
                    (urls[6], "review_done", "Claude review ready: api#162 Add per-tenant rate limit overrides"),
-                   (urls[9], "merged", "Merged by maya-chen: infra#183 Drop the legacy v1 auth endpoints")])
+                   (urls[9], "merged", "Merged by maya-chen: infra#183 Drop the legacy v1 auth endpoints"),
+                   (urls[12], "bump", f"{prs[urls[12]]['bump']['who']} bumped {label(prs[urls[12]])}"),
+                   (urls[22], "bump", f"{prs[urls[22]]['bump']['who']} bumped {label(prs[urls[22]])}")])
 
 
 def detail(pr):

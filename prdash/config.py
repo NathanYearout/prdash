@@ -29,6 +29,11 @@ def default_editor():
                              ("nvim", "{terminal} nvim ."), ("vim", "{terminal} vim .")], "{terminal} vi .")
 
 
+def default_notify():
+    return _first_installed([("notify-send", "notify-send --app-name=prdash prdash {text}"),
+                             ("terminal-notifier", "terminal-notifier -title prdash -message {text}")], "")
+
+
 # key: (default, kind, section, label, help). kind: str | text | int | bool | secret | choice:a,b
 FIELDS = {
     "orgs": ("", "str", "GitHub", "Organizations", "Comma-separated. Leave empty to use every org you belong to."),
@@ -50,8 +55,8 @@ FIELDS = {
     "review_prompt": (DEFAULT_REVIEW_PROMPT, "text", "Claude", "Extra review instructions",
                       "Appended to every Claude review, e.g. house style rules or a skill to use."),
     "notify_browser": (True, "bool", "Notifications", "Browser notifications", "While a prdash tab is open."),
-    "notify_cmd": ("", "str", "Notifications", "Notify command",
-                   "Runs for every inbox item, even with no tab open. {text} is the message, e.g. notify-send prdash {text}"),
+    "notify_cmd": (default_notify, "str", "Notifications", "System notification command",
+                   "Runs for every inbox item, even with no prdash tab open. {text} is the message. Clear it to turn off."),
     "slack_token": ("", "secret", "Slack", "User token",
                     "xoxp-… with chat:write, search:read, channels:history, groups:history, users:read."),
     "slack_channel": ("", "str", "Slack", "Channel", "Where PRs get announced, e.g. #dev"),

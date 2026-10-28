@@ -362,7 +362,7 @@
       <div>
         <div class="setup-hero">
           <img class="logo" src="/static/logo.svg" alt="">
-          <div><h2>Welcome to pr<em>dash</em></h2><p class="dim">Four quick checks and you're in. Everything here can be changed later in Settings.</p></div>
+          <div><h2>Welcome to pr<em>dash</em></h2><p class="dim">A few quick checks and you're in. Everything here can be changed later in Settings.</p></div>
         </div>
         <ol class="steps">
           <li class="done">
@@ -397,6 +397,17 @@
               <span x-show="setup.claude">✓ Claude Code found: Open in Claude and Claude reviews are ready.</span>
               <span x-show="!setup.claude">Claude Code isn't installed. Everything else works; install it from claude.com/claude-code to get reviews.</span>
             </p>
+          </li>
+        </ol>
+        <ol class="steps" style="counter-reset: s 4">
+          <li :class="{ done: setup.notify_cmd || notifyPermission === 'granted' }">
+            <h4>Notifications</h4>
+            <p class="dim small">Review requests, bumps, CI turning red or green, approvals, and merges. Urgent PRs stay on screen until you dismiss them.</p>
+            <div class="row tight">
+              <button class="btn sm" x-show="'Notification' in window && notifyPermission !== 'granted'" @click="askNotify()"><svg class="ic"><use href="/static/icons.svg#bell"/></svg>Allow browser notifications</button>
+              <span class="small dim" x-show="notifyPermission === 'granted'">✓ Browser notifications on</span>
+            </div>
+            <div class="tools single"><label>System notifications, even with no tab open <input class="mono" x-model="setup.notify_cmd" spellcheck="false" placeholder="off"></label></div>
           </li>
         </ol>
         <div class="setup-foot">
