@@ -361,6 +361,7 @@ class Handler(BaseHTTPRequestHandler):
 def serve(port):
     global PORT
     PORT = port
+    token()  # run the one-time token rotation now, before any browser session exists
     server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     server.daemon_threads = True
     server.serve_forever()
