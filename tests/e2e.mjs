@@ -130,6 +130,12 @@ await app(`a.settingsTab = "Local"`); await sleep(150); await shot("11-settings-
 await key("u"); await sleep(200); check("standup has text", (await app("a.standupText.length")) > 20); await shot("12-standup"); await key("Escape");
 await key("?"); await sleep(200); await shot("13-help"); await key("Escape");
 
+// a sync where nothing changed shouldn't refetch or re-render (informational: real PRs can change mid-test)
+const rev0 = await app("a.rev");
+await app("a.sync()"); await sleep(500);
+await waitFor(`!Alpine.$data(document.body).status.syncing`, 60000);
+console.log(`     quiet sync re-rendered: ${(await app("a.rev")) !== rev0 ? "yes (something on GitHub changed)" : "no"}`);
+
 // logo goes home: clears filters, panels, and selection
 await app(`(a.scope = "team", a.q = "ci:failing", a.preset = "all", a.builderOpen = true)`); await sleep(150);
 await js(`document.querySelector("h1 .home").click()`); await sleep(200);

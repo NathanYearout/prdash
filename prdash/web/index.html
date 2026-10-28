@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>prdash</title>
 <link rel="preload" href="/static/fonts/inter.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="icon" href="/static/logo.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/style.css">
 <meta name="csrf" content="__CSRF__">
 <script type="module" src="/static/js/app.js"></script>
@@ -13,7 +14,7 @@
 
 <header>
   <div class="bar">
-    <h1><a href="/" class="home" @click.prevent="home()" title="Home: your open PRs, filters cleared"><svg class="ic"><use href="/static/icons.svg#git-merge"/></svg><span>pr<em>dash</em></span></a></h1>
+    <h1><a href="/" class="home" @click.prevent="home()" title="Home: your open PRs, filters cleared"><img class="logo" src="/static/logo.svg" alt=""><span>pr<em>dash</em></span></a></h1>
     <nav class="seg">
       <template x-for="(label, k) in SCOPES" :key="k">
         <button :class="{ on: scope === k }" @click="setScope(k)" x-show="k !== 'team' || cfg.team_view">
@@ -36,9 +37,9 @@
     <button class="icon-btn lg badge-wrap" @click="openInbox()" title="Inbox (i)">
       <svg class="ic"><use href="/static/icons.svg#bell"/></svg><b class="badge" x-show="unread" x-text="unread > 99 ? '99+' : unread"></b>
     </button>
-    <button class="btn ghost sync" @click="sync()" :title="data?.error ? 'Last sync failed: ' + data.error : 'Sync now (r)'">
-      <svg class="ic" :class="{ spin: data?.syncing, bad: data?.error }"><use :href="'/static/icons.svg#' + (data?.error ? 'triangle-alert' : 'refresh-cw')"/></svg>
-      <span class="small dim" x-text="data?.syncing ? 'Syncing' : data?.at ? ago(data.at * 1000) : ''"></span>
+    <button class="btn ghost sync" @click="sync()" :title="status.error ? 'Last sync failed: ' + status.error : 'Sync now (r)'">
+      <svg class="ic" :class="{ spin: status.syncing, bad: status.error }"><use :href="'/static/icons.svg#' + (status.error ? 'triangle-alert' : 'refresh-cw')"/></svg>
+      <span class="small dim" x-text="status.syncing ? 'Syncing' : status.at ? ago(status.at * 1000) : ''"></span>
     </button>
     <button class="icon-btn lg" @click="openSettings()" title="Settings (,)"><svg class="ic"><use href="/static/icons.svg#settings"/></svg></button>
   </div>
@@ -95,7 +96,7 @@
       <div class="col"><div class="col-h skel-h"></div><div class="card skel"></div><div class="card skel"></div><div class="card skel short"></div></div>
     </template>
   </section>
-  <div class="banner" x-show="data && data.error"><svg class="ic"><use href="/static/icons.svg#triangle-alert"/></svg><span x-text="'Last sync failed: ' + data?.error"></span></div>
+  <div class="banner" x-show="status.error"><svg class="ic"><use href="/static/icons.svg#triangle-alert"/></svg><span x-text="'Last sync failed: ' + status.error"></span></div>
 
   <!-- Board -->
   <section class="board" x-show="data && layout === 'board'">
@@ -360,7 +361,7 @@
     <template x-if="setup">
       <div>
         <div class="setup-hero">
-          <svg class="ic"><use href="/static/icons.svg#git-merge"/></svg>
+          <img class="logo" src="/static/logo.svg" alt="">
           <div><h2>Welcome to pr<em>dash</em></h2><p class="dim">Four quick checks and you're in. Everything here can be changed later in Settings.</p></div>
         </div>
         <ol class="steps">

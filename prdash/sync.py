@@ -120,7 +120,7 @@ def sync_once():
         found = dict(zip(views, ex.map(github.membership, views)))
     old, old_members = db.all_prs()
     old_views = {v: set(urls) for v, urls in old_members.items()}
-    # open PRs refresh every time (CI and mergeability change without bumping updatedAt); merged ones only once
+    # open PRs refetch every run (CI and mergeability change without bumping updatedAt); merged ones only once
     ids = {i: u for opened, merged in found.values() for i, u in opened}
     ids.update({i: u for _, merged in found.values() for i, u in merged if u not in old or not old[u].get("merged")})
     new = github.fetch(list(ids))
@@ -133,21 +133,28 @@ def sync_once():
         db.save_views({"team": []}, {})
     prs = {**keep, **new}
     events += wake_snoozes(prs) + on_merge_jira(events, prs)
-    _refresh_jira(prs, members)
+    jira_changed = _refresh_jira(prs, members)
     db.put("synced_once", True)
     if events:
         db.add_events(events)
         notify(events)
     STATE.update(at=time.time(), took=round(time.time() - started, 1), error=None)
-    return events
+    # open tabs only refetch and re-render when something they show actually moved
+    changed = (jira_changed or bool(events) or any(old.get(u) != p for u, p in new.items())
+               or any(set(urls) != old_views.get(v, set()) for v, urls in members.items()))
+    return events, changed
 
 
 def _refresh_jira(prs, members):
+    """Refresh ticket status for your PRs and review queue; True if any status or assignee changed."""
     keys = {k for v in ("mine", "review") for u in members.get(v, []) for k in prs[u]["jira"]}
+    shown = lambda: {k: (v.get("status"), v.get("assignee")) for k, v in db.get("jira_cache", {}).items()}
+    before = shown()
     try:
         integrations.jira_issues(keys)
     except (RuntimeError, ValueError, OSError) as e:
         STATE["jira_error"] = str(e)
+    return shown() != before
 
 
 def loop():
@@ -155,14 +162,14 @@ def loop():
         WAKE.clear()  # a sync requested before this run starts is covered by it
         STATE["syncing"] = True
         broadcast({"type": "syncing"})
-        events = []
+        events, changed = [], True
         try:
-            events = sync_once()
+            events, changed = sync_once()
         except Exception as e:  # keep looping; GitHub hiccups are common
             STATE["error"] = str(e).splitlines()[0][:300] if str(e) else type(e).__name__
             traceback.print_exc()
         STATE["syncing"] = False
-        broadcast({"type": "sync", "events": [{"url": u, "kind": k, "text": t} for u, k, t in events], **STATE})
+        broadcast({"type": "sync", "changed": changed, "events": [{"url": u, "kind": k, "text": t} for u, k, t in events], **STATE})
         WAKE.wait(config.get("poll_seconds"))
 
 

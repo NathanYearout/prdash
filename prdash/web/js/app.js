@@ -1,7 +1,7 @@
 // prdash page. One Alpine component; data comes from the local server (/api/state) and live updates over SSE.
 import Alpine from "../vendor/alpine.esm.js";
 import { compile, getTerm, setTerm, SYNTAX } from "./filter.js";
-import { card, chips, row } from "./render.js";
+import { card, row } from "./render.js";
 
 const DAY = 864e5;
 
@@ -62,8 +62,8 @@ async function api(path, body) {
   if (!r.ok) throw new Error(j.error);
   return j;
 }
-// Derived lists are cached until an input changes; Alpine getters otherwise recompute on every read,
-// and the board reads them dozens of times per render. Kept outside Alpine so caching isn't reactive.
+// Derived lists are cached until an input changes: Alpine getters recompute on every read, and the board
+// reads them many times per render. Kept outside Alpine so the cache itself isn't reactive.
 const MEMO = new Map();
 function memo(name, deps, fn) {
   const hit = MEMO.get(name);
@@ -73,18 +73,16 @@ function memo(name, deps, fn) {
   return value;
 }
 const COL_LIMIT = 40;
-// The PR data lives outside Alpine's reactivity: proxying 250 PRs made every property read during
-// filtering and rendering go through dependency tracking (~300ms per view switch). Alpine watches `rev`.
-// __v_skip tells the reactivity engine (@vue/reactivity) never to wrap these objects.
+// PR data lives outside Alpine's reactivity (proxying 250 PRs made every read during filtering and rendering
+// pay for dependency tracking). Alpine watches `rev` instead; __v_skip keeps @vue/reactivity from wrapping it.
 const raw = o => Object.defineProperty(o, "__v_skip", { value: true });
 let STORE = null, LOCAL = raw({}), LAST = null;
-const today = () => new Date().toISOString().slice(0, 10);
 const plusDays = n => new Date(Date.now() + n * DAY).toISOString().slice(0, 10);
 
 Alpine.data("prdash", () => ({
   STATUSES, PRESETS, SCOPES, COLUMNS, SYNTAX, BUILDER, EVENT_ICON,
   scope: "mine", preset: "open", layout: "board", q: "", sort: "updated", dir: -1, showHidden: false,
-  rev: 0, cfg: {}, now: Date.now(), sel: null, focus: null, picked: {}, detail: {}, detailFor: null,
+  rev: 0, cfg: {}, status: { syncing: false, at: null, error: null }, now: Date.now(), sel: null, focus: null, picked: {}, detail: {}, detailFor: null,
   cbody: "", armed: null, busy: {}, toastMsg: "", toastErr: false, panel: null, palQ: "", palI: 0, settings: null,
   settingsTab: "GitHub", events: [], standupText: "", builderOpen: false, saved: [], more: {}, setup: null, naming: null, tagging: null, lastPicked: null,
 
@@ -107,6 +105,7 @@ Alpine.data("prdash", () => ({
       const d = await api("/api/state");
       LOCAL = raw(d.local); delete d.local;
       STORE = raw(d); this.cfg = d.config; this.rev++;
+      this.status = { syncing: d.syncing, at: d.at, error: d.error };
       if (!d.config.setup_done && !d.config.demo && !this.setup) this.openSetup();
     } catch (e) { this.toast(e.message, true); }
   },
@@ -114,8 +113,14 @@ Alpine.data("prdash", () => ({
     const es = new EventSource("/api/stream");
     es.onmessage = e => {
       const m = JSON.parse(e.data);
-      if (m.type === "syncing" && STORE) { STORE.syncing = true; this.rev++; }
-      if (m.type === "sync") { this.load(); if (m.events.length) this.notify(m.events); if (this.sel) this.loadDetail(this.sel); }
+      if (m.type === "syncing") this.status.syncing = true;
+      if (m.type === "sync") {
+        this.status = { syncing: false, at: m.at, error: m.error };
+        if (!m.changed) return; // nothing moved: skip the refetch and re-render
+        this.load();
+        if (m.events.length) this.notify(m.events);
+        if (this.sel) this.loadDetail(this.sel);
+      }
       if (m.type === "review" || m.type === "inbox") { this.load(); if (this.panel === "inbox") this.openInbox(); }
     };
   },
@@ -124,7 +129,7 @@ Alpine.data("prdash", () => ({
     try { const d = await api(`/api/detail?url=${encodeURIComponent(url)}`); if (this.detailFor === url) this.detail = d; }
     catch (e) { if (this.detailFor === url) this.detail = { error: e.message }; }
   },
-  sync() { api("/api/sync", {}).catch(e => this.toast(e.message, true)); if (STORE) { STORE.syncing = true; this.rev++; } },
+  sync() { api("/api/sync", {}).catch(e => this.toast(e.message, true)); this.status.syncing = true; },
 
   // ---- derived
   get ctx() { return { L: p => this.L(p), me: this.data?.me, reviews: this.data?.reviews || {}, staleDays: this.cfg.stale_days || 5, now: this.now }; },
@@ -189,7 +194,6 @@ Alpine.data("prdash", () => ({
   // ---- rendering (see render.js)
   colHTML(col) { return col.prs.map(p => card(this, p)).join(""); },
   tableHTML() { return this.list.map(p => row(this, p)).join(""); },
-  chipsHTML(p) { return chips(this, p, { labels: true }); },
   paint() { // sel / focus / picked as classes: cheap, and keeps j/k from re-rendering the board
     const { sel, focus, picked } = this;
     requestAnimationFrame(() => {
@@ -434,7 +438,7 @@ Alpine.data("prdash", () => ({
   openPalette() { this.palQ = ""; this.palI = 0; this.panel = "palette"; this.$nextTick(() => this.$refs.pal?.focus()); },
   runPal(i = this.palI) { const it = this.palItems[i]; if (!it) return; this.panel = null; it.run(); },
   setScope(s) { this.scope = s; this.sel = null; this.focus = null; this.more = {}; },
-  home() { // logo click: back to your open PRs with nothing filtered, selected, or open; keeps board/table choice
+  home() { // logo: your open PRs, nothing filtered or open; keeps the board/table choice
     Object.assign(this, { q: "", preset: "open", panel: null, builderOpen: false, showHidden: false, picked: {} });
     this.setScope("mine");
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -490,5 +494,5 @@ Alpine.data("prdash", () => ({
   },
 }));
 
-window.Alpine = Alpine; // handy in devtools and for tests/e2e.mjs
+window.Alpine = Alpine; // for devtools and tests/e2e.mjs
 Alpine.start();

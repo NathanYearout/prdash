@@ -109,7 +109,7 @@ def search_ids(q):
         s = gql("""query($q: String!, $c: String) { search(query: $q, type: ISSUE, first: 100, after: $c) {
                      pageInfo { hasNextPage endCursor } nodes { ... on PullRequest { id url } } } }""", q=q, c=cursor)["search"]
         out += [(n["id"], n["url"]) for n in s["nodes"] if n]
-        # ponytail: GitHub search caps at 1000 results; narrow with orgs or extra_query beyond that
+        # GitHub search returns at most 1000 results; narrow big orgs with the extra_query setting
         if not s["pageInfo"]["hasNextPage"] or len(out) >= 1000:
             return out
         cursor = s["pageInfo"]["endCursor"]

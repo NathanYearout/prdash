@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#8fb3ff"/>
+      <stop offset="1" stop-color="#9670f2"/>
+    </linearGradient>
+    <linearGradient id="shine" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff" stop-opacity=".25"/>
+      <stop offset=".55" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="30" fill="url(#bg)"/>
+  <rect width="128" height="128" rx="30" fill="url(#shine)"/>
+  <!-- a tiny board: PRs flow left to right into "done" -->
+  <g fill="#fff">
+    <rect x="21" y="32" width="24" height="18" rx="5" opacity=".5"/>
+    <rect x="21" y="55" width="24" height="18" rx="5" opacity=".5"/>
+    <rect x="21" y="78" width="24" height="18" rx="5" opacity=".5"/>
+    <rect x="52" y="32" width="24" height="18" rx="5" opacity=".78"/>
+    <rect x="52" y="55" width="24" height="18" rx="5" opacity=".78"/>
+    <rect x="83" y="32" width="24" height="18" rx="5"/>
+  </g>
+  <path d="M89 41.5l4 4 7.5-7.5" fill="none" stroke="#8466ee" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

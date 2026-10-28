@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/logo.svg" width="72" height="72" alt="">
+<img src="prdash/web/logo.svg" width="80" height="80" alt="">
 
 # prdash
 
