@@ -34,6 +34,7 @@
       <button :class="{ on: layout === 'board' }" @click="layout = 'board'" title="Board (b)"><svg class="ic"><use href="/static/icons.svg#kanban"/></svg></button>
       <button :class="{ on: layout === 'table' }" @click="layout = 'table'" title="Table (t)"><svg class="ic"><use href="/static/icons.svg#table-2"/></svg></button>
     </nav>
+    <button class="icon-btn lg" @click="openStandup()" title="Standup summary (u)"><svg class="ic"><use href="/static/icons.svg#clipboard"/></svg></button>
     <button class="icon-btn lg badge-wrap" @click="openInbox()" title="Inbox (i)">
       <svg class="ic"><use href="/static/icons.svg#bell"/></svg><b class="badge" x-show="unread" x-text="unread > 99 ? '99+' : unread"></b>
     </button>
