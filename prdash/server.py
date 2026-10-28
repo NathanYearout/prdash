@@ -6,7 +6,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
-from . import config, db, github, integrations, local, sync
+from . import config, db, github, integrations, local, standup, sync
 
 WEB = Path(__file__).resolve().parent / "web"
 TYPES = {".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".woff2": "font/woff2", ".html": "text/html"}
@@ -186,6 +186,27 @@ def setup_save(b):
     sync.now()
 
 
+def standup_data(window):
+    if window not in standup.WINDOWS:
+        raise ValueError(f"window must be one of {', '.join(standup.WINDOWS)}")
+    if DEMO:
+        from . import demo
+        result = demo.standup(window)
+    else:
+        result = standup.collect(window)
+    me = db.get("viewer")
+    return {**result, "text": standup.as_text(result, standup.open_now(me))}
+
+
+def standup_summary(text):
+    if not text.strip():
+        raise ValueError("Nothing to summarize.")
+    if DEMO:
+        from . import demo
+        return demo.SUMMARY
+    return standup.summarize(text[:40_000])
+
+
 def settings_data():
     return {"fields": config.public(), "slack": integrations.slack_ready(), "jira": integrations.jira_ready(),
             "owners": github.owners(), "me": github.viewer()}
@@ -282,6 +303,8 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send(200, settings_data())
                 if path == "/api/setup":
                     return self.send(200, setup_info())
+                if path == "/api/standup":
+                    return self.send(200, standup_data(qs.get("window", ["yesterday"])[0]))
             if method == "POST":
                 b = self.body()
                 if path == "/api/sync":
@@ -309,6 +332,8 @@ class Handler(BaseHTTPRequestHandler):
                 if path == "/api/setup":
                     setup_save(b)
                     return self.send(200, {"ok": True})
+                if path == "/api/standup/summary":
+                    return self.send(200, {"summary": standup_summary(b.get("text", ""))})
                 if path == "/api/settings/test":
                     return self.send(200, {"out": test_integration(b.get("what"))})
             self.send(404, {"error": "not found"})

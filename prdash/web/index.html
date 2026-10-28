@@ -463,8 +463,31 @@
   <div class="standup">
     <button class="close abs" @click="panel = null"><svg class="ic"><use href="/static/icons.svg#x"/></svg></button>
     <h3>Standup</h3>
-    <textarea rows="16" x-model="standupText" spellcheck="false"></textarea>
-    <div class="acts"><button class="btn primary" @click="copy(standupText, 'Standup copied')"><svg class="ic"><use href="/static/icons.svg#clipboard"/></svg>Copy</button></div>
+    <div class="standup-bar">
+      <nav class="seg">
+        <button :class="{ on: standup.window === 'yesterday' }" @click="loadStandup('yesterday')">Since last workday</button>
+        <button :class="{ on: standup.window === 'this_week' }" @click="loadStandup('this_week')">This week</button>
+        <button :class="{ on: standup.window === 'last_week' }" @click="loadStandup('last_week')">Last week</button>
+      </nav>
+      <nav class="seg" x-show="standup.summary">
+        <button :class="{ on: standup.view === 'details' }" @click="standup.view = 'details'">Details</button>
+        <button :class="{ on: standup.view === 'summary' }" @click="standup.view = 'summary'"><svg class="ic"><use href="/static/icons.svg#sparkles"/></svg>Summary</button>
+      </nav>
+    </div>
+    <p class="dim small">What changed on GitHub in this window: PRs you opened, pushed to, got reviewed, merged, or closed, and reviews you did.</p>
+    <div class="standup-body">
+      <textarea rows="16" spellcheck="false" x-show="standup.view === 'details'" x-model="standup.text" :disabled="standup.loading"
+        :placeholder="standup.loading ? 'Reading your GitHub activity…' : ''"></textarea>
+      <textarea rows="16" spellcheck="false" x-show="standup.view === 'summary'" x-model="standup.summary"></textarea>
+    </div>
+    <div class="acts">
+      <button class="btn primary" @click="copy(standup.view === 'summary' ? standup.summary : standup.text, 'Standup copied')" :disabled="standup.loading">
+        <svg class="ic"><use href="/static/icons.svg#clipboard"/></svg>Copy</button>
+      <button class="btn" @click="summarizeStandup()" :disabled="standup.loading || standup.summarizing || !standup.text">
+        <svg class="ic" :class="{ spin: standup.summarizing }"><use href="/static/icons.svg#sparkles"/></svg>
+        <span x-text="standup.summarizing ? 'Writing summary…' : standup.summary ? 'Rewrite summary' : 'Summarize with Claude'"></span></button>
+      <span class="dim small">Edit either one before copying.</span>
+    </div>
   </div>
 </div>
 

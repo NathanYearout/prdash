@@ -32,9 +32,10 @@ const PICK = `<button class="pick" data-act="pick" title="Select (x, shift-click
 
 export function card(a, p) {
   const l = a.L(p), r = a.review(p), prio = l.prio || 0;
-  const cls = ["card", (l.hidden || l.snooze) && "hid", p.urgent && !p.merged && "urgent"].filter(Boolean).join(" ");
+  const urgent = p.urgent && !p.merged;
+  const cls = ["card", (l.hidden || l.snooze) && "hid", urgent && "urgent"].filter(Boolean).join(" ");
   const chipHtml = chips(a, p);
-  return `<article class="${cls}" data-url="${esc(p.url)}">
+  const html = `<article class="${cls}" data-url="${esc(p.url)}">
   <div class="card-top">
     ${PICK}
     <span class="repo">${esc(p.repo)}</span><span class="num">#${p.number}</span>
@@ -60,6 +61,8 @@ export function card(a, p) {
     </span>
   </div>
 </article>`;
+  // urgent cards sit in a wrapper so the flames can burn behind them
+  return urgent ? `<div class="burning"><i class="fire" aria-hidden="true"></i>${html}</div>` : html;
 }
 
 export function row(a, p) {

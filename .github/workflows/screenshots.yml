@@ -1,0 +1,37 @@
+# Re-renders the README screenshots and GIF from demo mode whenever the UI changes, and commits them if they differ.
+name: Screenshots
+on:
+  push:
+    branches: [main]
+    paths: ["prdash/web/**", "prdash/demo.py", "prdash/standup.py", "tests/screenshots.mjs", ".github/workflows/screenshots.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency: { group: screenshots, cancel-in-progress: true }
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - run: sudo apt-get update -q && sudo apt-get install -y -q ffmpeg
+      - name: Render from demo mode (fictional data only)
+        env: { PRDASH_HOME: /tmp/prdash-demo, CHROME: google-chrome }
+        run: |
+          python -m prdash --demo --no-open --port 8770 &
+          for i in $(seq 1 30); do curl -s -o /dev/null http://127.0.0.1:8770/ && break; sleep 1; done
+          node tests/screenshots.mjs
+      - name: Commit changed images
+        run: |
+          git add docs/
+          git diff --cached --quiet && echo "screenshots unchanged" && exit 0
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Update README screenshots"
+          git push

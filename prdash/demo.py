@@ -111,3 +111,41 @@ def detail(pr):
               ("e2e", "IN_PROGRESS" if pr["ci"] == "PENDING" else "SUCCESS"), ("CodeQL", "SUCCESS")]
     return {"checks": [{"name": f"CI / {n}", "state": s, "url": pr["url"] + "/checks", "run": 1} for n, s in checks],
             "git": {"clone": f"~/code/{pr['repo']}", "worktree": None, "branch": "main", "dirty": False, "on_pr": False}}
+
+
+SUMMARY = """• Shipped the legacy v1 auth endpoint removal (infra#183), approved by Maya.
+• Opened and marked ready the urgent session cookie rollback (infra#225); it needs a reviewer today.
+• Refund amount validation (api#204) has changes requested by Theo; pushing fixes next.
+• Rate limiting for the public search API (api#162) is approved by Priya and ready to merge.
+• Reviewed the cron-to-queue migration and the flaky invite test fix, both approved."""
+
+# standup activity per window: (index into the demo PRs, what happened)
+STANDUP = {
+    "yesterday": [(15, dict(commits=2, ready=True)), (12, dict(commits=1, changes_by=["theo-park"])), (4, "reviewed")],
+    "this_week": [(9, dict(commits=3, approved_by=["maya-chen"], merged=True)), (15, dict(opened=True, commits=4, ready=True)),
+                  (12, dict(commits=2, changes_by=["theo-park"])), (6, dict(commits=1, approved_by=["priya-n"])),
+                  (4, "reviewed"), (22, "reviewed")],
+    "last_week": [(9, dict(opened=True, commits=6)), (18, dict(commits=2, approved_by=["maya-chen"], merged=True)),
+                  (24, dict(commits=4, approved_by=["sam-ortiz"], merged=True)), (6, dict(opened=True, commits=5, ready=True)),
+                  (0, dict(opened=True)), (27, dict(closed=True)), (4, "reviewed"), (13, "reviewed"), (19, "reviewed"), (25, "reviewed")],
+}
+
+
+def standup(name):
+    from .standup import WINDOWS, window
+    start, end = window(name)
+    prs, _ = db.all_prs()
+    urls = list(make_prs())
+    items = []
+    for i, what in STANDUP[name]:
+        p = prs.get(urls[i])
+        if not p:
+            continue
+        base = {"url": p["url"], "repo": p["repo"], "number": p["number"], "title": p["title"], "author": p["author"],
+                "draft": p["draft"], "state": p["state"]}
+        if what == "reviewed":
+            items.append({**base, "role": "reviewed", "states": ["APPROVED" if i % 2 == 0 else "CHANGES_REQUESTED"]})
+        else:
+            items.append({**base, "role": "mine", "opened": False, "commits": 0, "ready": False, "drafted": False,
+                          "approved_by": [], "changes_by": [], "merged": False, "merged_by": "maya-chen", "closed": False, **what})
+    return {"window": name, "label": WINDOWS[name], "start": start.isoformat(), "end": end.isoformat(), "items": items}

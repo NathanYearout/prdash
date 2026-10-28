@@ -128,7 +128,11 @@ await key("i"); await sleep(400); await shot("09-inbox"); check("inbox opens", (
 await key(","); check("settings load", await waitFor(`Alpine.$data(document.body).settings?.fields?.length > 10`, 5000)); await sleep(200); await shot("10-settings");
 await app(`a.settingsTab = "Local"`); await sleep(150); await shot("11-settings-local"); await key("Escape");
 await js(`document.querySelector('[title^="Standup summary"]').click()`); await sleep(200);
-check("standup button opens it", (await app("a.panel")) === "standup" && (await app("a.standupText.length")) > 20); await shot("12-standup"); await key("Escape");
+check("standup loads activity", await waitFor(`Alpine.$data(document.body).standup.text.length > 20 && !Alpine.$data(document.body).standup.loading`, 30000));
+await shot("12-standup");
+await app(`a.loadStandup("last_week")`);
+check("last week window", await waitFor(`/^Last week/.test(Alpine.$data(document.body).standup.text)`, 30000), (await app("a.standup.text")).split("\n")[0]);
+await shot("12b-standup-last-week"); await key("Escape");
 await key("?"); await sleep(200); await shot("13-help"); await key("Escape");
 
 // a sync where nothing changed shouldn't refetch or re-render (informational: real PRs can change mid-test)

@@ -35,7 +35,7 @@ const PERSISTED = ["scope", "preset", "layout", "q", "sort", "dir", "showHidden"
 const EVENT_ICON = {
   review_requested: "eye", review: "message-square", comment: "message-square", ci_failed: "triangle-alert", ci_passed: "check",
   merged: "git-merge", closed: "x", conflict: "triangle-alert", snooze: "clock", review_done: "sparkles", review_error: "triangle-alert",
-  jira: "ticket", jira_error: "triangle-alert", bump: "alarm-clock", urgent: "siren",
+  jira: "ticket", jira_error: "triangle-alert", bump: "alarm-clock", urgent: "flame",
 };
 const BUILDER = [ // filter builder rows: [key, label, options or "people"/"repos"]
   ["author", "Author", "people"], ["reviewer", "Reviewer", "people"], ["requested", "Review requested from", "people"],
@@ -84,7 +84,8 @@ Alpine.data("prdash", () => ({
   scope: "mine", preset: "open", layout: "board", q: "", sort: "updated", dir: -1, showHidden: false,
   rev: 0, cfg: {}, status: { syncing: false, at: null, error: null }, now: Date.now(), sel: null, focus: null, picked: {}, detail: {}, detailFor: null,
   cbody: "", armed: null, busy: {}, toastMsg: "", toastErr: false, panel: null, palQ: "", palI: 0, settings: null,
-  settingsTab: "GitHub", events: [], standupText: "", builderOpen: false, saved: [], more: {}, setup: null,
+  settingsTab: "GitHub", events: [],
+  standup: { window: "yesterday", text: "", summary: "", view: "details", loading: false, summarizing: false }, builderOpen: false, saved: [], more: {}, setup: null,
   notifyPermission: "Notification" in window ? Notification.permission : "unsupported", naming: null, tagging: null, lastPicked: null,
 
   init() {
@@ -236,7 +237,7 @@ Alpine.data("prdash", () => ({
   // [short, tone, icon, sentence]: why it's in Needs work, plus workflow nudges
   flags(p) {
     const f = [], idle = this.ago(p.updated);
-    if (p.urgent && !p.merged) f.push(["Urgent", "urgent", "siren", "Marked urgent"]);
+    if (p.urgent && !p.merged) f.push(["Urgent", "urgent", "flame", "Marked urgent"]);
     if (p.bump && !p.merged) f.push([`Bumped ${this.ago(p.bump.at)}`, "amber", "alarm-clock", `${p.bump.who} bumped this ${this.ago(p.bump.at)} ago`]);
     if (p.ci === "FAILURE" || p.ci === "ERROR") f.push(["CI", "red", "triangle-alert", "CI is failing"]);
     if (p.review === "CHANGES_REQUESTED") f.push(["Changes", "red", "message-square", "Changes requested"]);
@@ -372,22 +373,23 @@ Alpine.data("prdash", () => ({
     try { this.toast((await api("/api/settings/test", { what })).out); } catch (e) { this.toast(e.message, true); }
   },
   get settingsSections() { return [...new Set((this.settings?.fields || []).map(f => f.section))]; },
-  openStandup() {
-    const me = this.data?.me, all = Object.values(this.data?.prs || {}), mine = all.filter(p => p.author === me);
-    const d = new Date(); d.setDate(d.getDate() - (d.getDay() === 1 ? 3 : d.getDay() === 0 ? 2 : 1)); d.setHours(0, 0, 0, 0);
-    const line = p => `• ${p.repo}#${p.number} ${p.title}`;
-    const sec = (title, prs, fmt = line) => prs.length ? `${title}\n${prs.map(fmt).join("\n")}\n` : "";
-    const merged = mine.filter(p => p.merged && new Date(p.merged) >= d);
-    const open = mine.filter(p => !p.merged && !this.L(p).hidden);
-    const reviewing = (this.data?.views.review || []).map(u => this.data.prs[u]).filter(p => p && !p.merged);
-    this.standupText = [
-      sec(`Merged since ${d.toLocaleDateString(undefined, { weekday: "long" })}`, merged),
-      sec("Ready to merge", open.filter(p => p.status === "approved")),
-      sec("In review", open.filter(p => p.status === "in_review"), p => `${line(p)}${this.L(p).waiting ? ` (waiting on ${this.L(p).waiting})` : ""}`),
-      sec("Working on", open.filter(p => p.status === "needs_work" || p.status === "draft"), p => `${line(p)}${this.flags(p).filter(f => f[1] === "red").map(f => ` [${f[3]}]`).join("")}`),
-      reviewing.length ? `Reviews waiting on me: ${reviewing.length}\n` : "",
-    ].filter(Boolean).join("\n").trim() || "Nothing to report.";
-    this.panel = "standup";
+  // ---- standup: what changed in a window, plus an optional Claude summary
+  openStandup() { this.panel = "standup"; this.loadStandup(); },
+  async loadStandup(window = this.standup.window) {
+    Object.assign(this.standup, { window, loading: true, summary: "", view: "details" });
+    try {
+      const r = await api(`/api/standup?window=${window}`);
+      if (this.standup.window === window) this.standup.text = r.text;
+    } catch (e) { this.standup.text = ""; this.toast(e.message, true); }
+    finally { if (this.standup.window === window) this.standup.loading = false; }
+  },
+  async summarizeStandup() {
+    this.standup.summarizing = true;
+    try {
+      this.standup.summary = (await api("/api/standup/summary", { text: this.standup.text })).summary;
+      this.standup.view = "summary";
+    } catch (e) { this.toast(e.message, true); }
+    finally { this.standup.summarizing = false; }
   },
 
   // ---- first-run setup

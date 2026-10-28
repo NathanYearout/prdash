@@ -44,13 +44,17 @@ await reset(`, a.panel = "setup", a.setup = { me: "octo-dev", orgs: ["acme", "ac
   dirs: [{ path: "~/code", repos: 23, on: true }, { path: "~/work/acme", repos: 11, on: true }, { path: "~/Documents/experiments", repos: 4, on: false }],
   terminal: "kitty --directory {dir}", editor: "{terminal} nvim .", claude: true }`); await shot("setup");
 
+await reset(); await app("a.openStandup()"); await sleep(300);
+await app(`a.loadStandup("this_week")`); await sleep(600);
+await app("a.summarizeStandup()"); await sleep(600); await shot("standup");
+
 // docs/urgent.gif: step the CSS animations frame by frame (paused Web Animations), so the GIF is smooth and exact
 await reset();
 await cdp("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
 await sleep(400);
 const box = await js(`(() => {
   const u = document.querySelector(".card.urgent").getBoundingClientRect(), b = document.querySelector(".col.s-needs_work .card").getBoundingClientRect();
-  return { x: Math.round(b.left) - 16, y: Math.round(Math.min(u.top, b.top)) - 46, width: Math.round(u.right - b.left) + 32, height: Math.round(Math.max(u.bottom, b.bottom) - Math.min(u.top, b.top)) + 62 };
+  return { x: Math.round(b.left) - 16, y: Math.round(Math.min(u.top, b.top)) - 56, width: Math.round(u.right - b.left) + 44, height: Math.round(Math.max(u.bottom, b.bottom) - Math.min(u.top, b.top)) + 74 };
 })()`);
 const FRAMES = new globalThis.URL("./out/gif-frames/", import.meta.url).pathname;
 rmSync(FRAMES, { recursive: true, force: true }); mkdirSync(FRAMES, { recursive: true });

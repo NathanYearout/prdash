@@ -54,6 +54,8 @@ FIELDS = {
     "claude_cmd": ("claude", "str", "Claude", "Claude command", "Path or name of the Claude Code CLI."),
     "review_prompt": (DEFAULT_REVIEW_PROMPT, "text", "Claude", "Extra review instructions",
                       "Appended to every Claude review, e.g. house style rules or a skill to use."),
+    "summary_model": ("haiku", "str", "Claude", "Standup summary model",
+                      "Model for standup summaries. A small one is plenty: haiku, sonnet, or a full model name."),
     "notify_browser": (True, "bool", "Notifications", "Browser notifications", "While a prdash tab is open."),
     "notify_cmd": (default_notify, "str", "Notifications", "System notification command",
                    "Runs for every inbox item, even with no prdash tab open. {text} is the message. Clear it to turn off."),

@@ -12,6 +12,7 @@ Claude Code reviews, and Slack and Jira wired in. Runs on your machine. No accou
 <img alt="Python 3.10+" src="https://img.shields.io/badge/python-3.10%2B-3776AB?logo=python&logoColor=white">
 <img alt="No dependencies" src="https://img.shields.io/badge/dependencies-none-2ea44f">
 <img alt="Runs locally" src="https://img.shields.io/badge/runs-locally-7aa2f7">
+<a href="https://github.com/NathanYearout/prdash/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/NathanYearout/prdash/actions/workflows/ci.yml/badge.svg"></a>
 <img alt="License: Apache 2.0" src="https://img.shields.io/badge/license-Apache%202.0-blue">
 <img alt="Built on gh" src="https://img.shields.io/badge/built%20on-GitHub%20CLI-181717?logo=github">
 </p>
@@ -60,8 +61,8 @@ Draft → Needs work → In review → Approved → Merged across every org you 
 <tr>
 <td colspan="2" align="center">
 
-### Urgent PRs shake. Bumps get a clock.
-Put **urgent** in a title (or an `urgent` label) and the card pulses red, shakes every few seconds, and jumps to the top of its column. Someone comments **bump** and the card shows who and when, and it lands in your inbox. Reduced-motion settings get the glow without the shake.
+### Urgent PRs catch fire. Bumps get a clock.
+Put **urgent** in a title (or an `urgent` label) and the card burns, shakes every few seconds, and jumps to the top of its column. The flames are pure CSS that only animate `transform` and `opacity`, so they cost the browser next to nothing; reduced-motion settings keep the glow and drop the motion. Someone comments **bump** and the card shows who and when, and it lands in your inbox.
 
 <img src="docs/urgent.gif" alt="An urgent PR card glowing red and shaking next to a card with a Bumped chip" width="720">
 
@@ -104,13 +105,22 @@ New review requests, bumps, approvals and change requests, comments, CI going re
 <td><img src="docs/inbox.png" alt="Inbox with review, CI, and merge events"></td>
 </tr>
 <tr>
-<td><img src="docs/setup.png" alt="First-run setup screen"></td>
+<td><img src="docs/standup.png" alt="Standup panel with a Claude-written summary of this week"></td>
+<td valign="top">
+
+### Standups that write themselves
+See what actually changed **since your last workday**, **this week**, or **last week**: what shipped, what you pushed to or got reviewed, what you opened or closed, and the reviews you did. **Summarize with Claude** turns it into a few first-person bullets with a small, fast model through your Claude Code, ready to paste into the dev call.
+
+</td>
+</tr>
+<tr>
 <td valign="top">
 
 ### Set up in a minute
-prdash finds your GitHub login, your orgs, the folders where your clones live, your terminal and editor, and whether Claude Code is installed. Everything is editable later on the settings page.
+prdash finds your GitHub login, your orgs, the folders where your clones live, your terminal and editor, and whether Claude Code is installed, and turns on notifications. Everything is editable later on the settings page.
 
 </td>
+<td><img src="docs/setup.png" alt="First-run setup screen"></td>
 </tr>
 </table>
 
@@ -122,7 +132,6 @@ prdash finds your GitHub login, your orgs, the folders where your clones live, y
 - **Batch actions:** select with `x` or shift-click, then rebase, approve, re-run CI, Claude-review, snooze, tag, or hide them together.
 - **Slack:** post the announcement (`PR to fix the thing: <link>`), find it if someone posted by hand, and see thread replies and reactions on the PR.
 - **Jira:** ticket status and assignee on every card, and optionally move the ticket when your PR merges.
-- **Standup:** a summary of what merged since your last workday, what's ready to merge, in review, and stuck, ready to paste.
 - **Light and dark** themes follow your system.
 
 ## Filter syntax
@@ -179,8 +188,10 @@ python3 -m prdash --no-open --port 8766        # PRDASH_HOME=/tmp/x for a scratc
 python3 -m unittest discover tests            # backend, Slack/Jira against stub servers, server security
 node --test tests/filter.test.mjs             # filter language
 node tests/e2e.mjs http://127.0.0.1:8766/     # headless Chromium walkthrough (needs chromium)
-node tests/screenshots.mjs                    # regenerate docs/*.png from a --demo server on :8770 (same PRDASH_HOME)
+node tests/screenshots.mjs                    # regenerate docs/*.png and docs/urgent.gif from a --demo server on :8770 (same PRDASH_HOME)
 ```
+
+CI runs the tests on every push. When the UI changes, a second workflow starts demo mode, re-renders every README screenshot and the GIF in headless Chrome, and commits them, so the README never goes stale.
 
 Board status lives in `status()` in `prdash/github.py`, inbox rules in `diff()` in `prdash/sync.py`, filter keys in `prdash/web/js/filter.js`, and settings in `FIELDS` in `prdash/config.py`.
 
