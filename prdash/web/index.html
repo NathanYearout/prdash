@@ -187,22 +187,56 @@
       <!-- Conversation -->
       <section>
         <h4><svg class="ic"><use href="/static/icons.svg#message-square"/></svg> Conversation
-          <span x-show="detail.conversation" x-text="(detail.conversation || []).length"></span>
+          <span x-show="detail.conversation?.length" x-text="detail.conversation?.length"></span>
           <a :href="pane.url" target="_blank">open on GitHub</a></h4>
-        <ul class="thread convo">
-          <template x-for="c in detail.conversation || []" :key="c.url + c.at">
-            <li x-data="{ open: false }">
-              <div class="author"><img class="av sm" :src="avatar(c.who)" onerror="this.style.visibility='hidden'"><b x-text="c.who"></b>
-                <span class="dim small" x-text="c.what"></span>
-                <a class="small" x-show="c.path" :href="c.url" target="_blank"><code x-text="c.path + (c.line ? ':' + c.line : '')"></code></a>
-                <a class="dim small" :href="c.url" target="_blank" x-text="ago(c.at) + ' ago'"></a></div>
-              <p x-show="c.text" :class="{ clamp: !open }" @click="open = !open" x-text="c.text"></p>
+        <ol class="convo" x-show="detail.conversation?.length">
+          <template x-for="g in convo()" :key="g.key">
+            <li>
+              <template x-if="g.type === 'more'">
+                <button class="convo-more" @click="convoAll = true"><span x-text="'Show ' + g.n + ' more'"></span></button>
+              </template>
+              <template x-if="g.type === 'item'">
+                <div class="ce" :class="{ desc: g.c.what === 'opened' }">
+                  <img class="av" :class="'v-' + g.c.what.replace(' ', '-')" :src="avatar(g.c.who)" alt="" onerror="this.style.visibility='hidden'">
+                  <div>
+                    <div class="ce-head"><b x-text="g.c.who"></b><span :class="'v-' + g.c.what.replace(' ', '-')" x-text="g.c.what"></span>
+                      <a class="t" :href="g.c.url" target="_blank" :title="new Date(g.c.at).toLocaleString()" x-text="ago(g.c.at)"></a></div>
+                    <p x-show="g.c.text" x-data="{ open: false }" :class="{ clamp: !open }" @click="open = !open" x-text="g.c.text"></p>
+                  </div>
+                </div>
+              </template>
+              <template x-if="g.type === 'code'">
+                <div class="ce">
+                  <span class="node"><svg class="ic"><use href="/static/icons.svg#code"/></svg></span>
+                  <div class="cthread">
+                    <a :href="g.url" target="_blank" x-text="g.path + (g.line ? ':' + g.line : '')"></a>
+                    <template x-for="c in g.items" :key="c.url">
+                      <div class="ce">
+                        <img class="av" :src="avatar(c.who)" alt="" onerror="this.style.visibility='hidden'">
+                        <div>
+                          <div class="ce-head"><b x-text="c.who"></b>
+                            <a class="t" :href="c.url" target="_blank" :title="new Date(c.at).toLocaleString()" x-text="ago(c.at)"></a></div>
+                          <p x-show="c.text" x-data="{ open: false }" :class="{ clamp: !open }" @click="open = !open" x-text="c.text"></p>
+                        </div>
+                      </div>
+                    </template>
+                  </div>
+                </div>
+              </template>
             </li>
           </template>
-        </ul>
+        </ol>
         <div class="dim small" x-show="detail.conversation && !detail.conversation.length">No comments yet.</div>
         <div class="dim small" x-show="!detail.conversation && !detail.conversation_error">Loading…</div>
         <div class="err small" x-show="detail.conversation_error" x-text="detail.conversation_error"></div>
+        <div class="reply" x-show="!pane.merged">
+          <textarea rows="2" x-model="cbody" aria-label="Comment" placeholder="Leave a comment (Ctrl Enter to send)" @keydown.ctrl.enter="cbody && act('comment', pane)" @keydown.meta.enter="cbody && act('comment', pane)"></textarea>
+          <div class="acts">
+            <button class="btn" @click="act('request_changes', pane)" :disabled="isBusy('request_changes', pane)">Request changes</button>
+            <button class="btn go" :class="{ armed: armed === 'approve' + pane.url }" @click="act('approve', pane)" :disabled="isBusy('approve', pane)"><svg class="ic"><use href="/static/icons.svg#check"/></svg><span x-text="armed === 'approve' + pane.url ? 'Click to confirm' : 'Approve'"></span></button>
+            <button class="btn primary" title="Ctrl Enter" @click="act('comment', pane)" :disabled="!cbody || isBusy('comment', pane)">Comment</button>
+          </div>
+        </div>
       </section>
 
       <!-- Local checkout -->
@@ -305,11 +339,7 @@
 
       <section x-show="!pane.merged">
         <h4>Manage</h4>
-        <textarea class="full" rows="2" x-model="cbody" placeholder="Comment or review body (optional for approve and close)"></textarea>
         <div class="acts">
-          <button class="btn" @click="act('comment', pane)" :disabled="!cbody || isBusy('comment', pane)"><svg class="ic"><use href="/static/icons.svg#message-square"/></svg>Comment</button>
-          <button class="btn go" :class="{ armed: armed === 'approve' + pane.url }" @click="act('approve', pane)" :disabled="isBusy('approve', pane)"><svg class="ic"><use href="/static/icons.svg#check"/></svg><span x-text="armed === 'approve' + pane.url ? 'Click to confirm' : 'Approve'"></span></button>
-          <button class="btn" @click="act('request_changes', pane)" :disabled="isBusy('request_changes', pane)">Request changes</button>
           <button class="btn" @click="act('rebase', pane)" :disabled="isBusy('rebase', pane)" x-text="'Rebase on ' + pane.base"></button>
           <button class="btn" @click="act(pane.draft ? 'ready' : 'draft', pane)" x-text="pane.draft ? 'Mark ready' : 'Back to draft'"></button>
         </div>

@@ -114,6 +114,10 @@ def detail(pr):
     reviewer = (pr["reviewers"] or [{"who": "maya-chen"}])[0]["who"]
     convo = [{"who": pr["author"], "what": "opened", "at": pr["created"], "url": pr["url"],
               "text": f"{pr['title']}.\n\nTested locally against staging; screenshots in the ticket."},
+             {"who": "priya-n", "what": "commented", "at": at(30), "url": pr["url"] + "#c1",
+              "text": "Do we have numbers on how often this fires in prod? Want to make sure the backoff cap is right."},
+             {"who": pr["author"], "what": "commented", "at": at(26), "url": pr["url"] + "#c2",
+              "text": "About 40 a day, mostly during the nightly sync. The cap is 5 minutes, which covers the longest outage we've seen."},
              {"who": reviewer, "what": "commented on", "at": at(20), "url": pr["url"] + "#r1", "path": f"{pr['repo']}/handlers.py", "line": 88,
               "text": "This retries on every 4xx too. Can we limit it to 429 and 5xx?"},
              {"who": pr["author"], "what": "commented on", "at": at(18), "url": pr["url"] + "#r2", "path": f"{pr['repo']}/handlers.py", "line": 88,

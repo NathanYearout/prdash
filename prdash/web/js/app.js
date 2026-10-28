@@ -97,7 +97,7 @@ Alpine.data("prdash", () => ({
   STATUSES, PRESETS, SCOPES, COLUMNS, SYNTAX, BUILDER, EVENT_ICON, THEMES, AI_PRESETS,
   scope: "mine", preset: "open", layout: "board", q: "", sort: "updated", dir: -1, showHidden: false,
   rev: 0, cfg: {}, status: { syncing: false, at: null, error: null }, now: Date.now(), sel: null, focus: null, picked: {}, detail: {}, detailFor: null,
-  cbody: "", armed: null, busy: {}, toastMsg: "", toastErr: false, panel: null, palQ: "", palI: 0, settings: null,
+  cbody: "", convoAll: false, armed: null, busy: {}, toastMsg: "", toastErr: false, panel: null, palQ: "", palI: 0, settings: null,
   settingsTab: "Appearance", events: [],
   standup: { window: "yesterday", text: "", summary: "", view: "details", loading: false, summarizing: false }, builderOpen: false, saved: [], more: {}, setup: null,
   notifyPermission: "Notification" in window ? Notification.permission : "unsupported", naming: null, tagging: null, lastPicked: null,
@@ -108,7 +108,7 @@ Alpine.data("prdash", () => ({
     PERSISTED.forEach(k => this.$watch(k, () => {
       try { localStorage.prdash = JSON.stringify(Object.fromEntries(PERSISTED.map(k => [k, this[k]]))); } catch {}
     }));
-    this.$watch("sel", url => url && this.loadDetail(url));
+    this.$watch("sel", url => { this.convoAll = false; url && this.loadDetail(url); });
     this.load();
     this.connect();
     setInterval(() => (this.now = Date.now()), 30_000);
@@ -300,6 +300,17 @@ Alpine.data("prdash", () => ({
     await this.copy(this.slackText(p), "Copied. Paste it in Slack");
     if (!this.L(p).posted) this.setLocal(p, "posted", new Date().toISOString());
   },
+  // the drawer's conversation: inline comments grouped into one thread per file:line, long ones tucked behind "Show N more"
+  convo() {
+    const out = [], code = {};
+    for (const c of this.detail.conversation || []) {
+      if (!c.path) { out.push({ type: "item", key: c.url + c.at, c }); continue; }
+      const k = c.path + ":" + c.line;
+      if (!code[k]) out.push(code[k] = { type: "code", key: k, path: c.path, line: c.line, url: c.url, items: [] });
+      code[k].items.push(c);
+    }
+    return this.convoAll || out.length <= 4 ? out : [out[0], { type: "more", key: "more", n: out.length - 3 }, ...out.slice(-2)];
+  },
   async act(op, p) {
     if (["merge", "close", "approve"].includes(op) && this.armed !== op + p.url) {
       this.armed = op + p.url;
@@ -311,6 +322,7 @@ Alpine.data("prdash", () => ({
       this.toast(r.out);
       if (["comment", "approve", "request_changes", "close"].includes(op)) this.cbody = "";
       if (op === "review") this.load();
+      if (["comment", "approve", "request_changes"].includes(op)) this.loadDetail(p.url);
       if (["slack_post", "slack_find", "worktree", "worktree_remove", "checkout", "clone"].includes(op)) { this.load(); this.loadDetail(p.url); }
     } catch (e) { this.toast(e.message, true); }
     finally { const b = { ...this.busy }; delete b[op + p.url]; this.busy = b; }

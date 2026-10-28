@@ -289,8 +289,34 @@ main { padding: 18px 24px 60px; }
 .checks li a { color: var(--text); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .thread { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 10px; }
 .thread p { margin: 2px 0 0; font-size: 12.5px; white-space: pre-wrap; }
-.convo p { overflow-wrap: anywhere; cursor: pointer; }
-.convo p.clamp { display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden; }
+/* conversation: avatars sit on a rail; inline comments nest in one box per file:line */
+.convo { list-style: none; margin: 0; padding: 0; display: grid; gap: 16px; position: relative; }
+.convo::before { content: ""; position: absolute; left: 11.5px; top: 14px; bottom: 14px; width: 1px; background: var(--line); }
+.ce { display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 10px; position: relative; }
+.ce > .av, .ce > .node { width: 24px; height: 24px; box-shadow: 0 0 0 4px var(--panel); }
+.ce > .av.v-approved { box-shadow: 0 0 0 2px var(--green), 0 0 0 5px var(--panel); }
+.ce > .av.v-requested-changes { box-shadow: 0 0 0 2px var(--red), 0 0 0 5px var(--panel); }
+.node { display: grid; place-items: center; border-radius: 50%; background: var(--card); border: 1px solid var(--line); box-sizing: border-box; color: var(--dim); }
+.node .ic { width: 12px; height: 12px; }
+.ce-head { display: flex; align-items: baseline; gap: 6px; min-width: 0; font-size: 12.5px; color: var(--dim); line-height: 24px; }
+.ce-head b { color: var(--text); font-weight: 600; }
+.ce-head .v-approved { color: var(--green); } .ce-head .v-requested-changes { color: var(--red); }
+.ce-head .t { margin-left: auto; color: var(--dim); }
+.ce p { margin: 0; font-size: 13px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.ce p.clamp { display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; cursor: pointer; }
+.ce.desc p { color: var(--muted); } .ce.desc p.clamp { -webkit-line-clamp: 3; }
+.cthread { border: 1px solid var(--line); border-radius: 8px; background: var(--card); overflow: hidden; }
+.cthread > a { display: block; padding: 4px 10px; font: 11.5px/18px var(--mono); color: var(--violet); background: var(--card-hi); border-bottom: 1px solid var(--line); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cthread .ce { grid-template-columns: 18px minmax(0, 1fr); gap: 8px; padding: 8px 10px; }
+.cthread .ce + .ce { border-top: 1px solid var(--line); }
+.cthread .av { width: 18px; height: 18px; margin-top: 3px; box-shadow: none; }
+.convo-more { display: flex; align-items: center; gap: 10px; width: 100%; background: none; border: 0; padding: 0 0 0 34px; color: var(--accent); font: 500 12.5px var(--sans); cursor: pointer; }
+.convo-more::after { content: ""; flex: 1; border-top: 1px dashed var(--line-hi); }
+.convo-more:hover span { text-decoration: underline; }
+.reply { margin-top: 18px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); }
+.reply:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
+.reply textarea { display: block; width: 100%; box-sizing: border-box; border: 0; background: none; box-shadow: none !important; resize: none; padding: 10px 12px; field-sizing: content; min-height: 44px; max-height: 240px; }
+.reply .acts { margin: 0; padding: 0 8px 8px; justify-content: flex-end; }
 .events { list-style: none; margin: 12px -8px 0; padding: 0; }
 .events li { display: flex; gap: 10px; align-items: flex-start; padding: 9px 8px; border-radius: 8px; cursor: pointer; color: var(--muted); font-size: 13px; }
 .events li:hover { background: var(--card-hi); }
