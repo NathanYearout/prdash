@@ -206,6 +206,14 @@ class Integrations(unittest.TestCase):
             integrations.jira_transition("ABC-12", "Nope")
 
 
+class _NoRedirect(__import__("urllib.request").request.HTTPRedirectHandler):
+    def redirect_request(self, *a, **k):
+        return None
+
+
+NO_REDIRECT = __import__("urllib.request").request.build_opener(_NoRedirect)
+
+
 class Server(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -214,13 +222,15 @@ class Server(unittest.TestCase):
         import time
         time.sleep(0.3)
 
-    def req(self, path, token=None, host=None, body=None):
+    def req(self, path, token=None, host=None, body=None, cookie=None):
         h = {"Host": host or f"127.0.0.1:{self.port}", "Content-Type": "application/json"}
         if token:
             h["X-Token"] = token
+        if cookie:
+            h["Cookie"] = cookie
         r = Request(f"http://127.0.0.1:{self.port}{path}", headers=h, data=json.dumps(body).encode() if body is not None else None)
         try:
-            with urlopen(r, timeout=5) as resp:
+            with NO_REDIRECT.open(r, timeout=5) as resp:
                 return resp.status, resp.read()
         except HTTPError as e:
             with e:
@@ -238,6 +248,36 @@ class Server(unittest.TestCase):
         code, body = self.req("/api/action", tok, body={"url": "https://github.com/other/x/pull/1", "op": "merge"})
         self.assertEqual(code, 400)
         self.assertIn(b"configured orgs", body)
+
+    def test_login_never_exposes_token(self):
+        tok = server.token()
+        code, body = self.req("/")
+        self.assertEqual(code, 401, "no session: locked page")
+        self.assertNotIn(tok.encode(), body)
+        self.assertEqual(self.req("/?key=guess")[0], 401)
+        key = server.login_url(self.port).split("key=")[1]
+        r = Request(f"http://127.0.0.1:{self.port}/?key={key}", headers={"Host": f"127.0.0.1:{self.port}"})
+        try:
+            NO_REDIRECT.open(r, timeout=5)
+            self.fail("expected a redirect")
+        except HTTPError as e:
+            with e:
+                self.assertEqual(e.code, 303)
+                cookie = e.headers["Set-Cookie"]
+        self.assertIn("HttpOnly", cookie)
+        self.assertIn("SameSite=Strict", cookie)
+        self.assertEqual(self.req(f"/?key={key}")[0], 401, "login links work once")
+        session = cookie.split(";")[0]
+        code, body = self.req("/", cookie=session)
+        self.assertEqual(code, 200)
+        self.assertNotIn(tok.encode(), body, "the page never contains the token")
+        self.assertEqual(self.req("/api/events", cookie=session)[0], 200)
+        self.assertEqual(self.req("/api/events", cookie="prdash=wrong")[0], 403)
+
+    def test_check_links_are_http_only(self):
+        self.assertIsNone(github.safe_url("javascript:alert(1)"))
+        self.assertIsNone(github.safe_url(" javascript:alert(1)"))
+        self.assertEqual(github.safe_url("https://ci.example/run/1"), "https://ci.example/run/1")
 
 
 if __name__ == "__main__":

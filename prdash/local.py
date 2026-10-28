@@ -1,5 +1,5 @@
 """Your machine: clones, branches, worktrees, terminal/editor launching, and Claude Code."""
-import subprocess, time
+import subprocess, tempfile, time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -132,10 +132,20 @@ def claude(pr):
 
 # ---- headless Claude review
 
-def review_prompt(pr):
+MAX_CONTEXT = 200_000  # characters of PR text + diff handed to Claude
+
+
+def review_context(pr):
+    """The PR's description, comments, and diff, fetched by prdash so Claude never runs commands itself."""
+    text = gh("pr", "view", pr["url"], "--comments") + "\n\n===== DIFF =====\n" + gh("pr", "diff", pr["url"])
+    return text if len(text) <= MAX_CONTEXT else text[:MAX_CONTEXT] + "\n[diff truncated]"
+
+
+def review_prompt(pr, has_checkout):
     extra = config.get("review_prompt").strip()
-    return (f"Review the GitHub pull request {pr['url']} ({pr['title']}). Read it with `gh pr view {pr['url']} --comments` "
-            f"and `gh pr diff {pr['url']}`; open files in this checkout for context when useful. {UNTRUSTED}\n"
+    look = "You may open files in this checkout (read-only) for context. " if has_checkout else ""
+    return (f"Review the GitHub pull request {pr['url']} ({pr['title']}). Its description, comments, and diff are provided "
+            f"on stdin. {look}{UNTRUSTED}\n"
             "Reply in plain text, under 400 words, with these sections:\n"
             "Summary: one or two sentences.\n"
             "Issues: real bugs, risks, or missing tests, most severe first, each with file:line. Say 'None found' if none.\n"
@@ -150,16 +160,17 @@ def start_review(pr, on_done):
 
 
 def _run_review(pr, on_done):
-    cwd = work_dir(pr) or Path.home()
-    # dontAsk denies every tool not listed here, so the review can read but never write or run anything else
-    argv = config.expand(config.get("claude_cmd")) + [
-        "-p", review_prompt(pr), "--permission-mode", "dontAsk",
-        "--allowedTools", "Bash(gh pr view:*)", "Bash(gh pr diff:*)", "Read", "Grep", "Glob"]
+    checkout = work_dir(pr)
+    # dontAsk denies every tool not allowed here: no shell, no network, and file reads only inside the checkout.
+    tools = ["--allowedTools", "Read(./**)"] if checkout else []
+    argv = config.expand(config.get("claude_cmd")) + ["-p", review_prompt(pr, bool(checkout)), "--permission-mode", "dontAsk", *tools]
     try:
-        r = subprocess.run(argv, cwd=cwd, capture_output=True, text=True, timeout=900, stdin=subprocess.DEVNULL)
+        context = review_context(pr)
+        r = subprocess.run(argv, cwd=checkout or tempfile.mkdtemp(prefix="prdash-review-"), input=context,
+                           capture_output=True, text=True, timeout=900)
         ok = r.returncode == 0 and r.stdout.strip()
         db.review_set(pr["url"], status="done" if ok else "error", finished=time.time(),
                       output=(r.stdout if ok else r.stderr or r.stdout or "Claude exited without output").strip())
-    except (OSError, subprocess.TimeoutExpired) as e:
+    except (OSError, RuntimeError, subprocess.TimeoutExpired) as e:
         db.review_set(pr["url"], status="error", finished=time.time(), output=str(e))
     on_done(pr)

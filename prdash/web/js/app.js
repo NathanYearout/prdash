@@ -3,7 +3,6 @@ import Alpine from "../vendor/alpine.esm.js";
 import { compile, getTerm, setTerm, SYNTAX } from "./filter.js";
 import { card, chips, row } from "./render.js";
 
-const TOKEN = window.PRDASH.token;
 const DAY = 864e5;
 
 const STATUSES = [
@@ -53,10 +52,10 @@ const BUILDER = [ // filter builder rows: [key, label, options or "people"/"repo
 async function api(path, body) {
   const r = await fetch(path, {
     method: body ? "POST" : "GET",
-    headers: { "X-Token": TOKEN, "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json" },
     body: body && JSON.stringify(body),
   });
-  if (r.status === 403) throw new Error("This tab is out of date. Reload the page.");
+  if (r.status === 403) throw new Error("Signed out. Run `prdash` to open a fresh session.");
   const j = await r.json();
   if (!r.ok) throw new Error(j.error);
   return j;
@@ -110,7 +109,7 @@ Alpine.data("prdash", () => ({
     } catch (e) { this.toast(e.message, true); }
   },
   connect() {
-    const es = new EventSource(`/api/stream?token=${encodeURIComponent(TOKEN)}`);
+    const es = new EventSource("/api/stream");
     es.onmessage = e => {
       const m = JSON.parse(e.data);
       if (m.type === "syncing" && STORE) { STORE.syncing = true; this.rev++; }

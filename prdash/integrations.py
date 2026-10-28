@@ -52,7 +52,7 @@ def slack_post(pr):
     if not channel:
         raise ValueError("Set a Slack channel in Settings first.")
     out = slack("chat.postMessage", channel=channel, text=announcement(pr), unfurl_links="false")
-    link = slack("chat.getPermalink", channel=out["channel"], message_ts=out["ts"]).get("permalink")
+    link = _https(slack("chat.getPermalink", channel=out["channel"], message_ts=out["ts"]).get("permalink"))
     db.local_update(pr["url"], {"posted": _now_iso(), "slack": {"channel": out["channel"], "ts": out["ts"], "link": link}})
     return f"posted to {channel}"
 
@@ -69,7 +69,7 @@ def slack_find(pr):
     ts = m.get("ts")
     # a match inside a thread: the thread root is what the team replies under
     thread = re.search(r"thread_ts=([\d.]+)", m.get("permalink", ""))
-    info = {"channel": m["channel"]["id"], "ts": thread.group(1) if thread else ts, "link": m.get("permalink")}
+    info = {"channel": m["channel"]["id"], "ts": thread.group(1) if thread else ts, "link": _https(m.get("permalink"))}
     db.local_update(pr["url"], {"posted": db.local_get(pr["url"]).get("posted") or _now_iso(), "slack": info})
     return info
 
@@ -145,6 +145,10 @@ def jira_transition(key, to_status):
     cache = db.get("jira_cache", {})
     cache.pop(key, None)
     db.put("jira_cache", cache)
+
+
+def _https(u):
+    return u if isinstance(u, str) and u.startswith("https://") else None
 
 
 def _now_iso():

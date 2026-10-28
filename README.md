@@ -43,7 +43,7 @@ prdash --demo                 # look around with a fictional org first; nothing 
 prdash service install        # start at login (systemd on Linux, launchd on macOS), then `prdash` just opens it
 ```
 
-Running `prdash` while it's already running just reopens the dashboard.
+Running `prdash` while it's already running just reopens the dashboard. For another browser, `prdash url` prints a one-time login link.
 
 ## Features
 
@@ -159,8 +159,8 @@ Everything is on the settings page (`,`) and stored in prdash's local database. 
 - **Backend:** a small Python standard-library server that talks to GitHub through `gh`, with a SQLite cache in `~/.config/prdash` (set `PRDASH_HOME` to move it).
 - **Sync:** each run finds every view's PRs with GitHub search, then fetches details in parallel batches of 25. Refreshing ~250 PRs takes 7 to 10 seconds; merged PRs are fetched once. Changes between syncs become inbox events and are pushed to open tabs over server-sent events.
 - **Frontend:** Alpine.js with no build step. Cards render as HTML strings and the PR data stays outside Alpine's reactivity, so a 200-PR board renders in a couple hundred milliseconds.
-- **Claude:** reviews run `claude -p` in `dontAsk` mode, allowed only `gh pr view`, `gh pr diff`, and reading files. Open in Claude starts an interactive session in plan mode. Both are told to treat PR content as untrusted.
-- **Security:** listens only on `127.0.0.1`, checks the `Host` header, and requires a per-install token on every API call. Actions only run on PRs in your configured orgs. Slack and Jira tokens live in an owner-only directory and are never sent to the page.
+- **Claude:** for reviews, prdash fetches the PR description, comments, and diff itself and hands them to `claude -p` as data. Claude runs in `dontAsk` mode with no shell, and may only read files inside the PR's checkout. Open in Claude starts an interactive session in plan mode. Both are told to treat PR content as untrusted.
+- **Security:** listens only on `127.0.0.1` and checks the `Host` header. The `prdash` command opens a one-time login link that sets an HttpOnly, SameSite=Strict session cookie, so the page never contains the API token and other local users can't use it. Actions only run on PRs in your configured orgs. Links from CI providers must be `http(s)`. Slack and Jira tokens live in an owner-only directory and are never sent to the page.
 
 ## Development
 
@@ -169,7 +169,7 @@ python3 -m prdash --no-open --port 8766        # PRDASH_HOME=/tmp/x for a scratc
 python3 -m unittest discover tests            # backend, Slack/Jira against stub servers, server security
 node --test tests/filter.test.mjs             # filter language
 node tests/e2e.mjs http://127.0.0.1:8766/     # headless Chromium walkthrough (needs chromium)
-node tests/screenshots.mjs                    # regenerate docs/*.png from a --demo server on :8770
+node tests/screenshots.mjs                    # regenerate docs/*.png from a --demo server on :8770 (same PRDASH_HOME)
 ```
 
 Board status lives in `status()` in `prdash/github.py`, inbox rules in `diff()` in `prdash/sync.py`, filter keys in `prdash/web/js/filter.js`, and settings in `FIELDS` in `prdash/config.py`.

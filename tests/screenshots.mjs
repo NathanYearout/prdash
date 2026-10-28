@@ -1,6 +1,6 @@
 // Regenerates the README screenshots from demo mode (fictional data only).
-//   python3 -m prdash --demo --no-open --port 8770 &   node tests/screenshots.mjs
-import { spawn } from "node:child_process";
+//   PRDASH_HOME=/tmp/demo python3 -m prdash --demo --no-open --port 8770 &   PRDASH_HOME=/tmp/demo node tests/screenshots.mjs
+import { execFileSync, spawn } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 
 const URL = process.env.URL || "http://127.0.0.1:8770/";
@@ -26,7 +26,9 @@ const theme = t => cdp("Emulation.setEmulatedMedia", { features: [{ name: "prefe
 await cdp("Page.enable"); await cdp("Runtime.enable");
 await cdp("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 2, mobile: false });
 await theme("dark");
-await cdp("Page.navigate", { url: URL });
+const login = execFileSync("python3", ["-m", "prdash", "url", "--port", new globalThis.URL(URL).port], {
+  cwd: new globalThis.URL("..", import.meta.url).pathname, encoding: "utf8" }).trim(); // same PRDASH_HOME as the server
+await cdp("Page.navigate", { url: login });
 for (let i = 0; i < 100 && !(await js("!!window.Alpine && !!Alpine.$data(document.body).data")); i++) await sleep(200);
 await js("localStorage.clear()");
 const reset = (extra = "") => app(`(a.panel = null, a.sel = null, a.builderOpen = false, a.picked = {}, a.q = "", a.preset = "open", a.layout = "board", a.scope = "mine"${extra})`);

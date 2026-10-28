@@ -134,6 +134,11 @@ def fetch(ids):
     return {p["url"]: p for p in (flatten(n) for page in pages for n in page if n)}
 
 
+def safe_url(u):
+    """CI providers set these links; anything but http(s) (e.g. javascript:) is dropped."""
+    return u if isinstance(u, str) and u.lower().startswith(("https://", "http://")) else None
+
+
 def checks(url):
     """CI checks for the head commit: name, state, link, and the Actions run id when re-runnable."""
     q = """query($u: URI!) { resource(url: $u) { ... on PullRequest { commits(last: 1) { nodes { commit {
@@ -148,9 +153,9 @@ def checks(url):
             run = (c["checkSuite"] or {}).get("workflowRun") or {}
             state = (c["conclusion"] or c["status"] or "").upper()
             name = f'{run["workflow"]["name"]} / {c["name"]}' if run.get("workflow") else c["name"]
-            out.append({"name": name, "state": state, "url": c["detailsUrl"], "run": run.get("databaseId")})
+            out.append({"name": name, "state": state, "url": safe_url(c["detailsUrl"]), "run": run.get("databaseId")})
         else:
-            out.append({"name": c["context"], "state": c["state"], "url": c["targetUrl"], "run": None})
+            out.append({"name": c["context"], "state": c["state"], "url": safe_url(c["targetUrl"]), "run": None})
     rank = {"FAILURE": 0, "ERROR": 0, "TIMED_OUT": 0, "CANCELLED": 1, "ACTION_REQUIRED": 1, "IN_PROGRESS": 2,
             "QUEUED": 2, "PENDING": 2, "EXPECTED": 2}
     return sorted(out, key=lambda c: (rank.get(c["state"], 3), c["name"]))

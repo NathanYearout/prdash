@@ -1,6 +1,7 @@
 """Local HTTP server: the page, a JSON API, and a server-sent-events stream for live updates."""
 import json, queue, secrets, shutil, time
 from concurrent.futures import ThreadPoolExecutor
+from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
@@ -45,6 +46,31 @@ def token():
         t = legacy.read_text().strip() if legacy.exists() else secrets.token_urlsafe(24)
         db.put("token", t)
     return t
+
+
+def login_url(port):
+    """A one-time link that logs a browser in. It can show up briefly in process lists when a browser
+    is launched, so it expires after two minutes and works once; the session lives in an HttpOnly cookie."""
+    key = secrets.token_urlsafe(24)
+    with db.LOCK:
+        keys = {k: exp for k, exp in db.get("login_keys", {}).items() if exp > time.time()}
+        keys[key] = time.time() + 120
+        db.put("login_keys", keys)
+    return f"http://127.0.0.1:{port}/?key={key}"
+
+
+def use_login_key(key):
+    with db.LOCK:
+        keys = db.get("login_keys", {})
+        ok = keys.pop(key, 0) > time.time()
+        db.put("login_keys", keys)
+    return ok
+
+
+LOCKED = b"""<!doctype html><meta charset="utf-8"><title>prdash</title>
+<body style="font:15px system-ui;background:#0d0f12;color:#dde1e8;display:grid;place-items:center;height:90vh;text-align:center">
+<div><h2>prdash is running</h2><p>Open it with the <code>prdash</code> command; it logs this browser in.<br>
+Or run <code>prdash url</code> and paste the link it prints.</p></div>"""
 
 
 def pr_for(url):
@@ -140,14 +166,18 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def authed(self):
+        """Session cookie (browsers) or X-Token header (scripts). The token itself is never served to a page:
+        other local users or processes can reach 127.0.0.1 but can't read the cookie or prdash's 0700 data dir."""
+        jar = SimpleCookie(self.headers.get("Cookie") or "")
+        given = self.headers.get("X-Token") or (jar["prdash"].value if "prdash" in jar else "")
+        return bool(given) and secrets.compare_digest(given, token())
+
     def trusted(self, path, qs):
-        # Host check blocks DNS rebinding; the token blocks other sites from calling the API
+        # Host check blocks DNS rebinding; the session (SameSite=Strict) blocks other sites from calling the API
         if self.headers.get("Host") not in (f"127.0.0.1:{PORT}", f"localhost:{PORT}"):
             return False
-        if not path.startswith("/api/"):
-            return True
-        given = self.headers.get("X-Token") or (qs.get("token", [""])[0] if path == "/api/stream" else "")
-        return secrets.compare_digest(given, token())
+        return self.authed() if path.startswith("/api/") else True
 
     def body(self):
         n = int(self.headers.get("Content-Length") or 0)
@@ -167,8 +197,17 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if method == "GET":
                 if path == "/":
-                    cfg = json.dumps({"token": token()})
-                    return self.send(200, (WEB / "index.html").read_text().replace("__CONFIG__", cfg), "text/html; charset=utf-8")
+                    if "key" in qs:  # one-time login link: swap it for the session cookie, then drop it from the URL
+                        if not use_login_key(qs["key"][0]):
+                            return self.send(401, LOCKED, "text/html; charset=utf-8")
+                        self.send_response(303)
+                        self.send_header("Location", "/")
+                        self.send_header("Set-Cookie", f"prdash={token()}; Path=/; HttpOnly; SameSite=Strict; Max-Age=31536000")
+                        self.send_header("Content-Length", "0")
+                        return self.end_headers()
+                    if not self.authed():
+                        return self.send(401, LOCKED, "text/html; charset=utf-8")
+                    return self.send(200, (WEB / "index.html").read_bytes(), "text/html; charset=utf-8")
                 if path.startswith("/static/"):
                     f = (WEB / path[8:]).resolve()
                     if f.is_relative_to(WEB) and f.is_file() and f.suffix in TYPES:

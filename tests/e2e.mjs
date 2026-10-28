@@ -1,7 +1,7 @@
 // End-to-end walkthrough in headless Chromium over the DevTools protocol (no dependencies).
 //   node tests/e2e.mjs [url]   -> screenshots in tests/out/shots, exits non-zero on page errors or failed checks
 // Only exercises read-only and local-only features: it never approves, merges, comments, or posts.
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 
 const URL = process.argv[2] || "http://127.0.0.1:8766/";
@@ -50,7 +50,9 @@ const time = async (label, fn) => { const t = performance.now(); await fn(); con
 
 await cdp("Page.enable"); await cdp("Runtime.enable");
 await cdp("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: process.env.THEME || "dark" }] });
-await cdp("Page.navigate", { url: URL });
+const login = execFileSync("python3", ["-m", "prdash", "url", "--port", new globalThis.URL(URL).port], {
+  cwd: new globalThis.URL("..", import.meta.url).pathname, encoding: "utf8" }).trim(); // same PRDASH_HOME as the server
+await cdp("Page.navigate", { url: login });
 check("loads data", await waitFor(`window.Alpine && Alpine.$data(document.body).data?.prs`));
 await js(`localStorage.clear()`);
 await app(`(a.panel = null, a.scope = "mine", a.preset = "open", a.layout = "board", a.q = "", a.showHidden = false)`);
