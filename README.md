@@ -4,9 +4,9 @@
 
 # prdash
 
-**A fast, local dashboard for every pull request you care about.**<br>
+**A dashboard for the pull requests you care about, running on your own machine.**<br>
 Your PRs, your review queue, and your team's work on one board, with an inbox for what changed,<br>
-AI reviews with the model you choose, and Slack and Jira wired in. Runs on your machine. No accounts, no cloud.
+AI reviews from the model you pick, and Slack and Jira alongside each PR.
 
 <p>
 <img alt="Python 3.10+" src="https://img.shields.io/badge/python-3.10%2B-3776AB?logo=python&logoColor=white">
@@ -37,14 +37,14 @@ pipx install git+https://github.com/NathanYearout/prdash   # or: uv tool install
 prdash                                                      # opens http://127.0.0.1:8765
 ```
 
-A short setup screen confirms your GitHub login, the orgs to track, where your clones live, and your terminal and editor. The first sync takes a few seconds. After that the board loads instantly from a local cache and stays live.
+A short setup screen confirms your GitHub login, the orgs to track, where your clones live, and your terminal and editor. The first sync takes a few seconds. After that the board loads from a local cache and updates as your PRs change.
 
 ```sh
 prdash --demo                 # look around with a fictional org first; nothing touches GitHub
 prdash service install        # start at login (systemd on Linux, launchd on macOS), then `prdash` just opens it
 ```
 
-Running `prdash` while it's already running just reopens the dashboard. On start it updates itself: a git checkout fast-forwards (never over local changes) and restarts on the new code, and a pipx install upgrades in the background once a day. `--no-update` or Settings turns that off. For another browser, `prdash url` prints a one-time login link.
+Running `prdash` again reopens the dashboard. prdash also keeps itself current: a git checkout pulls new commits when it starts (unless you have local changes), and a pipx install upgrades once a day. Turn this off with `--no-update` or in Settings. To open it in another browser, `prdash url` prints a one-time login link.
 
 ## Features
 
@@ -52,7 +52,7 @@ Running `prdash` while it's already running just reopens the dashboard. On start
 <tr>
 <td width="50%" valign="top">
 
-### One board for everything
+### One board
 Draft → Needs work → In review → Approved → Merged across every org you pick. **Needs work** says why: failing CI, requested changes, or conflicts. Cards nudge you when an approved PR sits unmerged or a review goes quiet.
 
 </td>
@@ -61,8 +61,8 @@ Draft → Needs work → In review → Approved → Merged across every org you 
 <tr>
 <td colspan="2" align="center">
 
-### Urgent PRs catch fire. Bumps get a clock.
-Put **urgent** in a title (or an `urgent` label) and the card burns, shakes every few seconds, and jumps to the top of its column. The flames are pure CSS that only animate `transform` and `opacity`, so they cost the browser next to nothing; reduced-motion settings keep the glow and drop the motion. Someone comments **bump** and the card shows who and when, and it lands in your inbox.
+### Urgent and bumped PRs
+Put **urgent** in a title (or add an `urgent` label) and the card gets animated flames, shakes every few seconds, and jumps to the top of its column. If your system asks for reduced motion, it glows without shaking. When someone comments **bump**, the card shows who bumped it and when, and the bump shows up in your inbox.
 
 <img src="docs/urgent.gif" alt="An urgent PR card glowing red and shaking next to a card with a Bumped chip" width="720">
 
@@ -72,16 +72,16 @@ Put **urgent** in a title (or an `urgent` label) and the card burns, shakes ever
 <td><img src="docs/pr-panel.png" alt="PR panel with a Claude review, local checkout, and CI checks"></td>
 <td valign="top">
 
-### Your AI, built in
-**Open in Claude** starts a session in the right repo with the PR's description, comments, and diff loaded. **Review** runs in the background, read-only, and puts a summary, issues with `file:line`, and a verdict on the card. Run it on one PR or a whole selection. Bring your own model: [Claude Code, Codex, or any OpenAI-compatible API](#ai-providers) like DeepSeek, Grok, Gemini, OpenRouter, or a local Ollama.
+### AI reviews
+**Open in Claude** starts a session in the PR's repo with its description, comments, and diff loaded. **Review** runs read-only in the background and adds a summary, a list of issues with `file:line`, and a verdict to the card. You can review one PR or a whole selection. It works with [Claude Code, Codex, or any OpenAI-compatible API](#ai-providers), including DeepSeek, Grok, Gemini, OpenRouter, and a local Ollama.
 
 </td>
 </tr>
 <tr>
 <td valign="top">
 
-### Filters you can type
-`reviewer:alice updated:<3d -is:draft`, `size:>500 ci:failing`, `author:alice,bob merged:<7d`. Or click them together in the builder, which lists the people in your orgs. Save any filter as a chip.
+### Filters
+`reviewer:alice updated:<3d -is:draft`, `size:>500 ci:failing`, `author:alice,bob merged:<7d`. You can also put them together in the filter builder, which lists the people in your orgs, and save any filter as a chip.
 
 </td>
 <td><img src="docs/filters.png" alt="Filter builder with author, reviewer, repo, and date fields"></td>
@@ -90,7 +90,7 @@ Put **urgent** in a title (or an `urgent` label) and the card burns, shakes ever
 <td><img src="docs/palette.png" alt="Command palette searching actions and PRs"></td>
 <td valign="top">
 
-### Keyboard-first
+### Keyboard shortcuts
 `Ctrl K` finds any action or PR. `j`/`k` walk the queue with the panel open, so reviewing a stack is one key per PR. Single keys approve, open in Claude, start a review, open your editor, or snooze.
 
 </td>
@@ -98,8 +98,8 @@ Put **urgent** in a title (or an `urgent` label) and the card burns, shakes ever
 <tr>
 <td valign="top">
 
-### Notifications for what changed
-New review requests, bumps, approvals and change requests, comments, CI going red or green, conflicts, merges, and finished Claude reviews. They land in the inbox, pop up as browser notifications, and go to your desktop even with no tab open (`notify-send` or `terminal-notifier` are picked up automatically). Urgent review requests stay on screen until you dismiss them.
+### Notifications
+New review requests, bumps, approvals and change requests, comments (with who wrote them and what they said), CI going red or green, conflicts, merges, and finished Claude reviews. They show up in the inbox and as browser notifications, and reach your desktop when no tab is open (prdash uses `notify-send` or `terminal-notifier` if you have one). Urgent review requests stay on screen until you dismiss them.
 
 </td>
 <td><img src="docs/inbox.png" alt="Inbox with review, CI, and merge events"></td>
@@ -108,16 +108,16 @@ New review requests, bumps, approvals and change requests, comments, CI going re
 <td><img src="docs/standup.png" alt="Standup panel with a Claude-written summary of this week"></td>
 <td valign="top">
 
-### Standups that write themselves
-See what actually changed **since your last workday**, **this week**, or **last week**: what shipped, what you pushed to or got reviewed, what you opened or closed, and the reviews you did. **Summarize** turns it into a few first-person bullets with a small, fast model from your AI provider, ready to paste into the dev call.
+### Standup notes
+Pick since your last workday, this week, or last week to see what shipped, what you pushed to or got reviewed, what you opened or closed, and the reviews you did. **Summarize** has a smaller model from your AI provider turn that into a few first-person bullets you can paste into standup.
 
 </td>
 </tr>
 <tr>
 <td valign="top">
 
-### Set up in a minute
-prdash finds your GitHub login, your orgs, the folders where your clones live, your terminal and editor, and which AI you have (Claude Code, Codex, Gemini, or an API), and turns on notifications. Everything is editable later on the settings page.
+### Setup
+prdash finds your GitHub login, your orgs, the folders where your clones live, your terminal and editor, and which AI you have (Claude Code, Codex, Gemini, or an API), and turns on notifications. You can change any of it later in Settings.
 
 </td>
 <td><img src="docs/setup.png" alt="First-run setup screen"></td>
@@ -127,8 +127,9 @@ prdash finds your GitHub login, your orgs, the folders where your clones live, y
 ### And also
 
 - **Your checkouts:** clone a repo, check out the PR branch, or create a worktree per PR, then open your editor (`code`, `nvim` in your terminal, anything) or a terminal there.
+- **Conversation:** the PR panel lists the description, comments, reviews, and inline code comments in order, with `file:line` links back to GitHub.
 - **CI:** every check on the latest commit with links, and one click to re-run the failed GitHub Actions jobs.
-- **Your own layer:** priority, tags, notes, "waiting on", snooze until a date, and hide. Stored locally, never sent to GitHub.
+- **Your own layer:** priority, tags, notes, "waiting on", snooze until a date, and hide. These stay in prdash's database and never go to GitHub.
 - **Batch actions:** select with `x` or shift-click, then rebase, approve, re-run CI, AI-review, snooze, tag, or hide them together.
 - **Slack:** post the announcement (`PR to fix the thing: <link>`), find it if someone posted by hand, and see thread replies and reactions on the PR.
 - **Jira:** ticket status and assignee on every card, and optionally move the ticket when your PR merges.
@@ -176,7 +177,7 @@ Everything is on the settings page (`,`) and stored in prdash's local database. 
 
 ## AI providers
 
-Pick one in Settings → AI. Everything prdash sends is the PR's description, comments, and diff, fetched by prdash itself.
+Pick one on the setup screen or in Settings → AI, then hit **Test**. prdash fetches the PR's description, comments, and diff itself and sends only those to the provider.
 
 | Provider | Reviews and standup summaries | Open in… (terminal session) |
 |---|---|---|
@@ -184,7 +185,7 @@ Pick one in Settings → AI. Everything prdash sends is the PR's description, co
 | **Codex CLI** (`codex`) | `codex exec --sandbox read-only` from an empty folder (no network) | `codex --sandbox read-only` |
 | **OpenAI-compatible API** | One chat completion, no tools | Your own command, e.g. `aider --model deepseek/deepseek-chat --message {prompt}` |
 
-Pick one on the setup screen or in Settings → AI, then hit **Test**. API presets: DeepSeek `https://api.deepseek.com` (`deepseek-chat`), Grok `https://api.x.ai/v1` (`grok-4`), OpenAI `https://api.openai.com/v1`, Gemini `https://generativelanguage.googleapis.com/v1beta/openai` (`gemini-2.5-flash`), OpenRouter `https://openrouter.ai/api/v1` (hundreds of models), Ollama `http://localhost:11434/v1` (local, no key). Buttons take the provider's name ("Open in Codex", "Grok review"). PR text and diffs go to whichever provider you choose. Headless runs never start inside a PR's checkout, so a PR can't ship its own agent config, hooks, or MCP servers into your review. Gemini CLI isn't offered for headless runs because its read-only mode still allows web fetches; use Gemini through the API instead.
+API presets: DeepSeek `https://api.deepseek.com` (`deepseek-chat`), Grok `https://api.x.ai/v1` (`grok-4`), OpenAI `https://api.openai.com/v1`, Gemini `https://generativelanguage.googleapis.com/v1beta/openai` (`gemini-2.5-flash`), OpenRouter `https://openrouter.ai/api/v1` (hundreds of models), Ollama `http://localhost:11434/v1` (local, no key). Buttons take the provider's name ("Open in Codex", "Grok review"). Headless runs never start inside a PR's checkout, so a PR can't ship its own agent config, hooks, or MCP servers into your review. Gemini CLI isn't offered for headless runs because its read-only mode still allows web fetches; use Gemini through the API instead.
 
 ## How it works
 
@@ -204,7 +205,7 @@ node tests/e2e.mjs http://127.0.0.1:8766/     # headless Chromium walkthrough (n
 node tests/screenshots.mjs                    # regenerate docs/*.png and docs/urgent.gif from a --demo server on :8770 (same PRDASH_HOME)
 ```
 
-CI runs the tests on every push. When the UI changes, a second workflow starts demo mode, re-renders every README screenshot and the GIF in headless Chrome, and commits them, so the README never goes stale.
+CI runs the tests on every push. When the UI changes, a second workflow starts demo mode, re-renders the README screenshots and GIF in headless Chrome, and commits any that changed.
 
 Board status lives in `status()` in `prdash/github.py`, inbox rules in `diff()` in `prdash/sync.py`, filter keys in `prdash/web/js/filter.js`, and settings in `FIELDS` in `prdash/config.py`.
 

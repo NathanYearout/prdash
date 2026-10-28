@@ -1,7 +1,7 @@
 [project]
 name = "prdash"
 version = "0.2.0"
-description = "A fast local dashboard for your GitHub pull requests: board, filters, inbox, Claude reviews, Slack and Jira."
+description = "A local dashboard for your GitHub pull requests: board, filters, inbox, AI reviews, Slack and Jira."
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "Apache-2.0"}
