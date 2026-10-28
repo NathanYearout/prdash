@@ -173,7 +173,8 @@ a.chip.jira:hover { text-decoration: none; background: color-mix(in srgb, var(--
 /* ---- board ---- */
 main { padding: 18px 24px 60px; }
 .board { display: flex; gap: 16px; align-items: flex-start; overflow-x: auto; padding-bottom: 8px; }
-.col { flex: 1 1 0; min-width: 280px; display: flex; flex-direction: column; gap: 8px; }
+/* columns flex to fill, but stop at a readable card width (like Trello, Linear, GitHub Projects); extra space stays on the right */
+.col { flex: 1 1 0; min-width: 280px; max-width: 380px; display: flex; flex-direction: column; gap: 8px; }
 .col-body { display: contents; }
 .col-h { display: flex; align-items: center; gap: 8px; font: 600 13px var(--sans); padding: 2px 4px 10px; }
 .col-h b { font: 600 11px var(--mono); color: var(--dim); background: var(--line); border-radius: 10px; padding: 0 7px; }
@@ -198,7 +199,7 @@ main { padding: 18px 24px 60px; }
 @keyframes beam { to { transform: translate(-50%, -50%) rotate(1turn); } }
 .urgent-ring .card { border-color: transparent; box-shadow: none;
   background: linear-gradient(180deg, color-mix(in srgb, var(--red) 9%, var(--card)), var(--card) 55%); }
-.urgent-ring .card::before { background: var(--red); }
+.urgent-ring .card::before { display: none; } /* the ring already says it; a second red edge competes */
 .chip.flag.urgent { color: var(--red); background: color-mix(in srgb, var(--red) 13%, transparent); font-weight: 650; letter-spacing: .06em; text-transform: uppercase; font-size: 10px; }
 .chip.flag.urgent::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; box-shadow: 0 0 0 3px color-mix(in srgb, var(--red) 25%, transparent); animation: pulse 1.4s ease-in-out infinite; }
 .tbl tr.urgent td:first-child { box-shadow: inset 3px 0 0 var(--red); }
