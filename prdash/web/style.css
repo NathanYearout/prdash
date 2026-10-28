@@ -349,16 +349,20 @@ main { padding: 18px 24px 60px; }
 .k-ci_failed, .k-conflict, .k-review_error, .k-jira_error { color: var(--red); } .k-ci_passed, .k-merged { color: var(--green); }
 .k-review_requested, .k-bump { color: var(--amber); } .k-review_done { color: var(--violet); } .k-urgent { color: var(--red); }
 
-/* age mode: a stripe and badge per open PR, fresh green through two-weeks-old red */
-.heat-0 { --heat: var(--green); } .heat-1 { --heat: color-mix(in srgb, var(--green) 50%, var(--amber)); } .heat-2 { --heat: var(--amber); }
-.heat-3 { --heat: color-mix(in srgb, var(--amber) 45%, var(--red)); } .heat-4 { --heat: var(--red); }
-.card.heat { background-image: linear-gradient(to right, var(--heat) 0 3px, transparent 3px); }
-.card.heat-4 { background-color: color-mix(in srgb, var(--red) 6%, var(--card)); }
+/* age mode: each open PR's color comes from its age (--a: green to amber, --b: to red, --tint: how red the card turns
+   past a month). It replaces the status edge rather than adding a second one; the column already says the status. */
+.heat { --heat: color-mix(in oklab, var(--red) var(--b, 0%), color-mix(in oklab, var(--amber) var(--a, 0%), var(--green))); }
+.card.heat::before { background: var(--heat); }
+.card.heat { background-color: color-mix(in oklab, var(--red) var(--tint, 0%), var(--card));
+  border-color: color-mix(in oklab, var(--red) calc(var(--tint, 0%) * 2.5), var(--line)); }
+.tbl tr.heat td { background: color-mix(in oklab, var(--red) var(--tint, 0%), transparent); }
 .tbl tr.heat td:first-child { box-shadow: inset 3px 0 0 var(--heat); }
 .age { font: 600 11px var(--mono); color: var(--heat); white-space: nowrap; }
-.heat-legend { display: inline-flex; gap: 10px; align-items: center; font: 11px var(--mono); color: var(--dim); }
-.heat-legend > span { display: inline-flex; gap: 4px; align-items: center; }
-.heat-legend i { width: 8px; height: 8px; border-radius: 2px; background: var(--heat); }
+.heat-legend { display: inline-flex; gap: 6px; align-items: center; font: 11px var(--mono); color: var(--dim); }
+.heat-legend i { width: 22px; height: 6px; border-radius: 3px; }
+.heat-legend i:nth-of-type(1) { background: linear-gradient(90deg, var(--green), color-mix(in oklab, var(--amber) 70%, var(--green))); }
+.heat-legend i:nth-of-type(2) { background: linear-gradient(90deg, var(--amber), var(--red)); }
+.heat-legend i:nth-of-type(3) { background: var(--red); box-shadow: 0 0 0 2px color-mix(in oklab, var(--red) 28%, transparent); }
 
 /* PR panel extras: stack, re-request, threads, retry */
 .stack { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 10px; }

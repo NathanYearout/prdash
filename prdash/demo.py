@@ -34,7 +34,7 @@ def make_prs():
         author = ME if i % 3 == 0 else rnd.choice(PEOPLE)
         repo = REPOS[i % len(REPOS)]
         n = 120 + i * 7
-        created = now - timedelta(days=rnd.uniform(0.2, 30))
+        created = now - timedelta(days=rnd.uniform(0.2, 30) * (7 if i % 7 == 3 else 1))  # a few long-forgotten ones
         updated = min(now, created + timedelta(days=rnd.uniform(0, 6)))
         kind = ["draft", "needs_ci", "changes", "conflict", "review", "review", "review", "approved", "approved", "merged"][i % 10]
         merged = iso(now - timedelta(days=rnd.uniform(0.1, 6))) if kind == "merged" else None

@@ -36,10 +36,10 @@ const PICK = `<button class="pick" data-act="pick" title="Select (x, shift-click
 
 export function card(a, p) {
   const l = a.L(p), r = a.review(p), prio = l.prio || 0;
-  const urgent = p.urgent && !p.merged, heat = a.heatLevel(p);
-  const cls = ["card", (l.hidden || l.snooze) && "hid", urgent && "urgent", heat != null && `heat heat-${heat}`].filter(Boolean).join(" ");
+  const urgent = p.urgent && !p.merged, heat = a.heatOf(p);
+  const cls = ["card", (l.hidden || l.snooze) && "hid", urgent && "urgent", heat && "heat"].filter(Boolean).join(" ");
   const chipHtml = chips(a, p);
-  const html = `<article class="${cls}" data-url="${esc(p.url)}">
+  const html = `<article class="${cls}" data-url="${esc(p.url)}"${heat ? ` style="${heat[0]}"` : ""}>
   <div class="card-top">
     ${PICK}
     <span class="repo">${esc(p.repo)}</span><span class="num">#${p.number}</span>
@@ -47,7 +47,7 @@ export function card(a, p) {
     <span class="grow"></span>
     ${r.status === "running" ? icon("sparkles", "state spin") : r.status === "done" ? `<span title="${esc(a.cfg.ai_name)} reviewed">${icon("sparkles", "state ok")}</span>` : ""}
     ${l.posted ? `<span title="Announced in Slack">${icon("hash", "state")}</span>` : ""}
-    ${heat != null ? `<span class="age" title="Opened ${esc(new Date(p.created).toLocaleString())}">${a.ago(p.created)} old</span>`
+    ${heat ? `<span class="age" title="Opened ${esc(new Date(p.created).toLocaleString())}">${heat[1]} old</span>`
       : `<span class="t" title="${p.merged ? "Merged" : "Updated"} ${esc(new Date(p.merged || p.updated).toLocaleString())}">${a.ago(p.merged || p.updated)}</span>`}
     <i class="dot ${p.ci || ""}" title="CI: ${esc(p.ci || "no checks")}"></i>
   </div>
@@ -72,9 +72,9 @@ export function card(a, p) {
 
 export function row(a, p) {
   const l = a.L(p), prio = l.prio || 0;
-  const heat = a.heatLevel(p);
-  const cls = [(l.hidden || l.snooze) && "hid", p.urgent && !p.merged && "urgent", heat != null && `heat heat-${heat}`].filter(Boolean).join(" ");
-  return `<tr class="${cls}" data-url="${esc(p.url)}">
+  const heat = a.heatOf(p);
+  const cls = [(l.hidden || l.snooze) && "hid", p.urgent && !p.merged && "urgent", heat && "heat"].filter(Boolean).join(" ");
+  return `<tr class="${cls}" data-url="${esc(p.url)}"${heat ? ` style="${heat[0]}"` : ""}>
   <td class="pickcol">${PICK}</td>
   <td><span class="prio p${prio}">${"●".repeat(prio) || "·"}</span></td>
   <td class="repo">${esc(p.repo)}</td>
@@ -84,7 +84,7 @@ export function row(a, p) {
   <td><i class="dot ${p.ci || ""}" title="${esc(p.ci || "no checks")}"></i></td>
   <td class="small rv-${p.review || ""}">${a.reviewLabel(p)}</td>
   <td class="size"><span class="a">+${p.adds}</span> <span class="d">−${p.dels}</span></td>
-  <td class="t">${a.ago(p.created)}</td>
+  ${heat ? `<td class="t age">${heat[1]}</td>` : `<td class="t">${a.ago(p.created)}</td>`}
   <td class="t ${!p.merged && a.days(p.updated) > 14 ? "stale" : ""}">${a.ago(p.updated)}</td>
   <td class="note-cell">${esc(l.note)}</td>
   <td>${a.cfg.ai_terminal ? `<button class="mini accent icon-only" data-act="agent" title="Open in ${esc(a.cfg.ai_name)}">${icon("sparkles")}</button>` : ""}</td>

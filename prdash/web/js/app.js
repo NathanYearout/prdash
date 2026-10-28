@@ -46,8 +46,15 @@ const COLUMNS = {
   created: ["Age", p => p.created], updated: ["Updated", p => p.updated], note: ["Note", (p, l) => l.note || ""],
 };
 const PERSISTED = ["scope", "preset", "layout", "q", "sort", "dir", "showHidden", "heat"];
-// age colors: an open PR's days since it opened -> 0 (fresh) to 4 (two weeks or more)
-const HEAT = [[1, "under a day"], [3, "1 to 3 days"], [7, "3 to 7 days"], [14, "1 to 2 weeks"], [Infinity, "2 weeks or more"]];
+// age colors: days since a PR opened, on a log scale up to 6 months so very old PRs keep getting redder.
+// Green at 0, amber around a week, red around a month, then a red tint that deepens until 6 months.
+const AGE_MAX = 180;
+const clamp01 = x => Math.max(0, Math.min(1, x));
+const pct = x => `${Math.round(clamp01(x) * 100)}%`;
+function heatStyle(days) {
+  const t = clamp01(Math.log2(1 + days) / Math.log2(1 + AGE_MAX));
+  return `--a:${pct(t / .4)};--b:${pct((t - .4) / .26)};--tint:${Math.round(clamp01((t - .66) / .34) * 18)}%`;
+}
 const EVENT_ICON = {
   review_requested: "eye", review: "message-square", comment: "message-square", ci_failed: "triangle-alert", ci_passed: "check",
   merged: "git-merge", closed: "x", conflict: "triangle-alert", snooze: "clock", review_done: "sparkles", review_error: "triangle-alert",
@@ -103,7 +110,7 @@ let STORE = null, LOCAL = raw({}), LAST = null;
 const plusDays = n => new Date(Date.now() + n * DAY).toISOString().slice(0, 10);
 
 Alpine.data("prdash", () => ({
-  STATUSES, PRESETS, SCOPES, COLUMNS, SYNTAX, BUILDER, EVENT_ICON, THEMES, AI_PRESETS, HEAT,
+  STATUSES, PRESETS, SCOPES, COLUMNS, SYNTAX, BUILDER, EVENT_ICON, THEMES, AI_PRESETS, heatStyle,
   scope: "mine", preset: "open", layout: "board", q: "", sort: "updated", dir: -1, showHidden: false, heat: false,
   replyFor: null, replyBody: "", inboxFilter: "all", insights: null, insightsView: "mine",
   rev: 0, cfg: {}, status: { syncing: false, at: null, error: null }, now: Date.now(), sel: null, focus: null, picked: {}, detail: {}, detailFor: null,
@@ -240,11 +247,13 @@ Alpine.data("prdash", () => ({
     if (p.status === "in_review" && this.days(p.updated) > (this.cfg.stale_days || 5)) return { who, why: `Quiet for ${this.ago(p.updated)}.` };
     return null;
   },
-  heatLevel(p) {
+  // age mode: [inline style, label] for an open PR, or null
+  heatOf(p) {
     if (!this.heat || p.merged || p.state !== "OPEN") return null;
     const d = this.days(p.created);
-    return HEAT.findIndex(([max]) => d < max);
+    return [heatStyle(d), this.age(d)];
   },
+  age(d) { return d >= 365 ? `${(d / 365).toFixed(1).replace(".0", "")}y` : d >= 60 ? `${Math.round(d / 30)}mo` : this.ago(this.now - d * DAY); },
   threads() { return (this.detail.conversation || []).filter(c => c.what === "thread"); },
   openThreads() { return this.threads().filter(t => !t.resolved).length; },
   canFix(p) {

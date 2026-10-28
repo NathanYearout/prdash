@@ -68,7 +68,7 @@
       <svg class="ic"><use href="/static/icons.svg#eye-off"/></svg>Hidden &amp; snoozed</button>
     <button class="fchip toggle-chip" :class="{ on: heat }" @click="heat = !heat" title="Color open PRs by how long they've been open, oldest first in each column (g)">
       <svg class="ic"><use href="/static/icons.svg#thermometer"/></svg>Age</button>
-    <span class="heat-legend" x-show="heat"><template x-for="(h, i) in HEAT" :key="i"><span :class="'heat-' + i" :title="h[1]"><i></i><span x-text="['<1d', '1–3d', '3–7d', '1–2w', '2w+'][i]"></span></span></template></span>
+    <span class="heat-legend" x-show="heat" title="Days since each PR opened: green when new, amber around a week, red around a month, tinted red by 6 months">new<i></i>1w<i></i>1mo<i></i>6mo+</span>
     <span class="grow"></span>
     <span class="dim small" x-show="data && q" x-text="list.length + ' match'"></span>
     <button class="hint" @click="panel = 'help'"><svg class="ic"><use href="/static/icons.svg#keyboard"/></svg> Shortcuts <kbd>?</kbd></button>
@@ -669,7 +669,7 @@
         <h4>Waiting longest for a first review</h4>
         <ul class="ilist" x-show="insights.waiting.length">
           <template x-for="w in insights.waiting" :key="w.url">
-            <li @click="panel = null; sel = w.url"><span class="age" :class="'heat-' + HEAT.findIndex(([max]) => w.hours / 24 < max)" x-text="hours(w.hours)"></span>
+            <li @click="panel = null; sel = w.url"><span class="age heat" :style="heatStyle(w.hours / 24)" x-text="hours(w.hours)"></span>
               <span class="repo" x-text="w.repo + '#' + w.number"></span><span class="grow ellipsis" x-text="w.title"></span><span class="dim small" x-text="w.author"></span></li>
           </template>
         </ul>

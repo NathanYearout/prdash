@@ -135,7 +135,7 @@ Pick since your last workday, this week, or last week to see what shipped, what 
 <td valign="top">
 
 ### Insights and PR age
-`s` shows the median time to first review and to merge for your PRs, your review queue, or the team, the PRs that have waited longest for a first review, and the checks that flake most. On the board, `g` colors open PRs from green to red by how long they've been open and puts the oldest first in each column.
+`s` shows the median time to first review and to merge for your PRs, your review queue, or the team, the PRs that have waited longest for a first review, and the checks that flake most. On the board, `g` colors open PRs by how long they've been open: green when new, amber around a week, red around a month, and an increasingly red card up to six months, with the oldest first in each column.
 
 </td>
 <td><img src="docs/insights.png" alt="Insights panel with review and merge times, PRs waiting for review, and flaky checks"></td>
