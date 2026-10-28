@@ -36,8 +36,8 @@ const PICK = `<button class="pick" data-act="pick" title="Select (x, shift-click
 
 export function card(a, p) {
   const l = a.L(p), r = a.review(p), prio = l.prio || 0;
-  const urgent = p.urgent && !p.merged;
-  const cls = ["card", (l.hidden || l.snooze) && "hid", urgent && "urgent"].filter(Boolean).join(" ");
+  const urgent = p.urgent && !p.merged, heat = a.heatLevel(p);
+  const cls = ["card", (l.hidden || l.snooze) && "hid", urgent && "urgent", heat != null && `heat heat-${heat}`].filter(Boolean).join(" ");
   const chipHtml = chips(a, p);
   const html = `<article class="${cls}" data-url="${esc(p.url)}">
   <div class="card-top">
@@ -47,7 +47,8 @@ export function card(a, p) {
     <span class="grow"></span>
     ${r.status === "running" ? icon("sparkles", "state spin") : r.status === "done" ? `<span title="${esc(a.cfg.ai_name)} reviewed">${icon("sparkles", "state ok")}</span>` : ""}
     ${l.posted ? `<span title="Announced in Slack">${icon("hash", "state")}</span>` : ""}
-    <span class="t" title="${p.merged ? "Merged" : "Updated"} ${esc(new Date(p.merged || p.updated).toLocaleString())}">${a.ago(p.merged || p.updated)}</span>
+    ${heat != null ? `<span class="age" title="Opened ${esc(new Date(p.created).toLocaleString())}">${a.ago(p.created)} old</span>`
+      : `<span class="t" title="${p.merged ? "Merged" : "Updated"} ${esc(new Date(p.merged || p.updated).toLocaleString())}">${a.ago(p.merged || p.updated)}</span>`}
     <i class="dot ${p.ci || ""}" title="CI: ${esc(p.ci || "no checks")}"></i>
   </div>
   <div class="card-title" title="${esc(p.title)}">${esc(shortTitle(p))}</div>
@@ -71,7 +72,8 @@ export function card(a, p) {
 
 export function row(a, p) {
   const l = a.L(p), prio = l.prio || 0;
-  const cls = [(l.hidden || l.snooze) && "hid", p.urgent && !p.merged && "urgent"].filter(Boolean).join(" ");
+  const heat = a.heatLevel(p);
+  const cls = [(l.hidden || l.snooze) && "hid", p.urgent && !p.merged && "urgent", heat != null && `heat heat-${heat}`].filter(Boolean).join(" ");
   return `<tr class="${cls}" data-url="${esc(p.url)}">
   <td class="pickcol">${PICK}</td>
   <td><span class="prio p${prio}">${"●".repeat(prio) || "·"}</span></td>

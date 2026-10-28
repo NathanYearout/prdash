@@ -41,8 +41,10 @@ def label(pr):
     return f'{pr["repo"]}#{pr["number"]} {pr["title"]}'
 
 
-def diff(old, new, me, review_before, review_after):
-    """Inbox events between two snapshots. old/new: {url: pr}. Only things you'd act on."""
+def diff(old, new, me, review_before, review_after, local=None):
+    """Inbox events between two snapshots. old/new: {url: pr}. Only things you'd act on: your PRs, PRs you follow,
+    your review queue, and @mentions anywhere. local: {url: your fields}, for muted and followed PRs."""
+    local = local or {}
     events = []
     for url in review_after - review_before:
         if url in new:
@@ -54,7 +56,16 @@ def diff(old, new, me, review_before, review_after):
             events.append((url, "bump", f'{b["who"]} bumped {label(n)}'))
     for url, n in new.items():
         o = old.get(url)
-        if not o or n["author"] != me:
+        if not o:
+            continue
+        # PRs cached before prdash tracked mentions and new commits have no baseline to compare against
+        m, was = (n.get("mentions") or {}).get(me.lower()), (o.get("mentions") or {}).get(me.lower())
+        if "mentions" in o and m and m["who"] != me and (m["who"], m["at"]) != (was and (was["who"], was["at"])):
+            events.append((url, "mention", f'{m["who"]} mentioned you on {label(n)}: "{m["text"]}"'))
+        if "fixes_pushed" in o and n.get("fixes_pushed") and not o["fixes_pushed"] and n["author"] != me and \
+                any(r["who"] == me and r["state"] == "CHANGES_REQUESTED" for r in n["reviewers"]):
+            events.append((url, "pushed", f'{n["author"]} pushed new commits after your change request: {label(n)}'))
+        if n["author"] != me and not local.get(url, {}).get("following"):
             continue
         if n["merged"] and not o["merged"]:
             events.append((url, "merged", f'Merged by {n["merged_by"]}: {label(n)}'))
@@ -69,7 +80,7 @@ def diff(old, new, me, review_before, review_after):
         for r in n["reviewers"]:
             if r["state"] != "REQUESTED" and before.get(r["who"]) != r["state"] and r["who"] != me:
                 events.append((url, "review", f'{r["who"]} {REVIEW_VERB.get(r["state"], "reviewed")} {label(n)}'))
-        if n["comments"] > o["comments"]:
+        if n["comments"] > o["comments"] and not any(e[0] == url and e[1] == "mention" for e in events):
             k, c = n["comments"] - o["comments"], n.get("last_comment")
             if not c:
                 events.append((url, "comment", f'{k} new comment{"s" * (k > 1)} on {label(n)}'))
@@ -79,6 +90,85 @@ def diff(old, new, me, review_before, review_after):
                 events.append((url, "comment", f'{k} new comments on {label(n)}, latest from {c["who"]}: "{c["text"]}"'))
         if n["mergeable"] == "CONFLICTING" and o["mergeable"] != "CONFLICTING":
             events.append((url, "conflict", f'Merge conflict with {n["base"]}: {label(n)}'))
+    return [e for e in events if not local.get(e[0], {}).get("muted")]
+
+
+# ---- flaky checks: a check that failed and then passed on the same commit flaked
+
+def _rank(state):
+    return 0 if state in github.FAILED else 1 if state in github.RUNNING else 3 if state == "SUCCESS" else 2
+
+def record_checks(prs, checks):
+    """checks: {url: [{name, state, run}]} for this sync's PRs. Returns the new flakes as [(url, repo, name)]."""
+    seen = {(r, h, n): s for r, h, n, s in db.q("SELECT repo, head, name, state FROM check_state")}
+    flakes, rows = [], []
+    for url, cs in checks.items():
+        p = prs[url]
+        if not p.get("head"):
+            continue
+        repo = f'{p["owner"]}/{p["repo"]}'
+        worst = {}  # a workflow on both push and pull_request runs twice under one name: keep the worse result
+        for c in cs:
+            if c["name"] not in worst or _rank(c["state"]) < _rank(worst[c["name"]]):
+                worst[c["name"]] = c["state"]
+        for name, state in worst.items():
+            was = seen.get((repo, p["head"], name))
+            if was in github.FAILED and state == "SUCCESS":
+                flakes.append((url, repo, name))
+            if was in github.FAILED and state in github.RUNNING:
+                state = was  # a re-run in progress: remember it failed on this commit until it finishes
+            rows.append((repo, p["head"], name, state))
+    db.save_checks(rows, flakes)
+    return flakes
+
+
+def retries(prs, checks, me, local):
+    """Retry until green: re-run failed GitHub Actions jobs on armed PRs until CI passes or attempts run out.
+    Known-flaky failures on your own PRs arm it automatically when that setting is on."""
+    events, cap, counts = [], max(1, min(10, config.get("retry_max"))), db.flake_counts()
+    for url, p in prs.items():
+        cs = checks.get(url)
+        if cs is None or p["merged"] or p["state"] == "CLOSED":
+            continue
+        failed = [c for c in cs if c["state"] in (*github.FAILED, "CANCELLED")]
+        if not failed and not local.get(url, {}).get("retry"):
+            continue
+        l = db.local_get(url)  # fresh: you may have pressed Retry or Stop since the sync started
+        r = l.get("retry")
+        if not r and failed and config.get("retry_flaky") and p["author"] == me and l.get("retry_done") != p["head"] \
+                and all(counts.get((f'{p["owner"]}/{p["repo"]}', c["name"]), 0) >= 2 for c in failed):
+            r = {"head": p["head"], "attempts": 0, "max": cap, "auto": True}
+            events.append((url, "retrying", f"Retrying known-flaky checks: {label(p)}"))
+        if not r:
+            continue
+
+        def stop(kind=None, text=None, gave_up=False):
+            db.local_update(url, {"retry": None, **({"retry_done": p["head"]} if gave_up else {})})
+            if kind:
+                events.append((url, kind, text))
+
+        if r["head"] != p["head"]:
+            stop()  # new commits get a fresh CI run of their own
+        elif any(c["state"] in github.RUNNING for c in cs) or time.time() - r.get("at", 0) < 90:
+            continue  # still running, or the re-run hasn't registered on GitHub yet
+        elif all(c["state"] in ("SUCCESS", "NEUTRAL", "SKIPPED") for c in cs):
+            n = r["attempts"]
+            stop("retry_ok", f'CI passed after {n} re-run{"s" * (n != 1)}: {label(p)}' if n else f"CI passed: {label(p)}")
+        elif not failed:
+            stop("retry_failed", f"Stopped retrying {label(p)}: a check needs attention on GitHub", gave_up=True)
+        elif r["attempts"] >= r["max"]:
+            names = ", ".join(sorted({c["name"] for c in failed})[:3])
+            stop("retry_failed", f'Still failing after {r["attempts"]} re-runs ({names}): {label(p)}', gave_up=True)
+        elif not github.failed_runs(failed):
+            stop("retry_failed", f"Can't re-run {label(p)}: the failing checks aren't GitHub Actions", gave_up=True)
+        else:
+            try:
+                github.rerun_runs(url, github.failed_runs(failed))
+            except RuntimeError as e:
+                stop("retry_failed", f"Re-run failed on {label(p)}: {str(e).splitlines()[0][:200]}", gave_up=True)
+                continue
+            if db.local_get(url).get("retry"):  # not stopped while the re-run request was in flight
+                db.local_update(url, {"retry": {**r, "attempts": r["attempts"] + 1, "at": time.time()}})
     return events
 
 
@@ -134,11 +224,15 @@ def sync_once():
     ids = {i: u for opened, merged in found.values() for i, u in opened}
     ids.update({i: u for _, merged in found.values() for i, u in merged if u not in old or not old[u].get("merged")})
     new = github.fetch(list(ids))
+    checks = {u: p.pop("_checks", []) for u, p in new.items()}
     keep = {u: old[u] for _, merged in found.values() for _, u in merged if u not in new and u in old}
     members = {v: [u for _, u in opened + merged if u in new or u in keep] for v, (opened, merged) in found.items()}
     first = not db.get("synced_once")
-    events = [] if first else diff(old, new, me, old_views.get("review", set()), set(members.get("review", [])))
+    local = db.local_all()
+    events = [] if first else diff(old, new, me, old_views.get("review", set()), set(members.get("review", [])), local)
     db.save_views(members, {**keep, **new})
+    record_checks(new, checks)
+    events += retries(new, checks, me, local)
     if not config.get("team_view"):
         db.save_views({"team": []}, {})
     prs = {**keep, **new}

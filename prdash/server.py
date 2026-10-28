@@ -1,5 +1,6 @@
 """Local HTTP server: the page, a JSON API, and a server-sent-events stream for live updates."""
-import hashlib, hmac, json, queue, secrets, shutil, time
+import hashlib, hmac, json, queue, secrets, shutil, statistics, time
+from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -15,20 +16,27 @@ DEMO = False
 
 # ops that act on one PR. Each takes the cached PR dict and the optional body text.
 OPS = {
-    **{op: (lambda op: lambda pr, body: github.act(op, pr["url"], body))(op) for op in github.ACTIONS},
-    "rerun": lambda pr, body: github.rerun_failed(pr["url"]),
-    "agent": lambda pr, body: local.agent(pr),
-    "review": lambda pr, body: start_review(pr),
-    "editor": lambda pr, body: local.editor(pr),
-    "terminal": lambda pr, body: local.terminal(pr),
-    "checkout": lambda pr, body: local.checkout(pr),
-    "worktree": lambda pr, body: "worktree at " + local.worktree(pr),
-    "worktree_remove": lambda pr, body: local.worktree_remove(pr),
-    "clone": lambda pr, body: local.clone(pr),
-    "slack_post": lambda pr, body: integrations.slack_post(pr),
-    "slack_find": lambda pr, body: "found it" if integrations.slack_find(pr) else "not posted yet",
+    **{op: (lambda op: lambda pr, body, arg: github.act(op, pr["url"], body))(op) for op in github.ACTIONS},
+    "rerequest": lambda pr, body, arg: github.rerequest(pr, [l.strip() for l in (arg or "").split(",") if l.strip()]),
+    "thread_reply": lambda pr, body, arg: github.thread_reply(pr["url"], arg or "", body),
+    "thread_resolve": lambda pr, body, arg: github.thread_resolve(pr["url"], arg or "", True),
+    "thread_unresolve": lambda pr, body, arg: github.thread_resolve(pr["url"], arg or "", False),
+    "fix": lambda pr, body, arg: local.fix(pr, github.conversation(pr["url"])),
+    "retry": lambda pr, body, arg: start_retry(pr),
+    "retry_stop": lambda pr, body, arg: stop_retry(pr),
+    "rerun": lambda pr, body, arg: github.rerun_failed(pr["url"]),
+    "agent": lambda pr, body, arg: local.agent(pr),
+    "review": lambda pr, body, arg: start_review(pr),
+    "editor": lambda pr, body, arg: local.editor(pr),
+    "terminal": lambda pr, body, arg: local.terminal(pr),
+    "checkout": lambda pr, body, arg: local.checkout(pr),
+    "worktree": lambda pr, body, arg: "worktree at " + local.worktree(pr),
+    "worktree_remove": lambda pr, body, arg: local.worktree_remove(pr),
+    "clone": lambda pr, body, arg: local.clone(pr),
+    "slack_post": lambda pr, body, arg: integrations.slack_post(pr),
+    "slack_find": lambda pr, body, arg: "found it" if integrations.slack_find(pr) else "not posted yet",
 }
-CHANGES_GITHUB = set(github.ACTIONS) | {"rerun"}
+CHANGES_GITHUB = set(github.ACTIONS) | {"rerun", "rerequest", "thread_reply", "thread_resolve", "thread_unresolve", "retry"}
 
 
 def start_review(pr):
@@ -121,12 +129,29 @@ def pr_for(url):
     return pr
 
 
-def run_op(url, op, body=""):
+def start_retry(pr):
+    """Arm retry until green and re-run the failed jobs now; the sync loop takes it from there."""
+    head, cs = github.checks_at(pr["url"])
+    failed = github.failed_runs(cs)
+    r = {"head": head, "attempts": 0, "max": max(1, min(10, config.get("retry_max")))}
+    if failed:
+        github.rerun_runs(pr["url"], failed)
+        r.update(attempts=1, at=time.time())
+    db.local_update(pr["url"], {"retry": r, "retry_done": None})
+    return f'retrying until green, up to {r["max"]} re-runs' if failed else "will re-run failed jobs until green"
+
+
+def stop_retry(pr):
+    db.local_update(pr["url"], {"retry": None, "retry_done": pr.get("head")})
+    return "stopped retrying"
+
+
+def run_op(url, op, body="", arg=None):
     if DEMO:
         raise ValueError("This is the demo: actions are turned off. Run prdash without --demo to use your own PRs.")
     if op not in OPS:
         raise ValueError(f"unknown action {op}")
-    out = OPS[op](pr_for(url), body or "")
+    out = OPS[op](pr_for(url), body or "", arg)
     if op in CHANGES_GITHUB:
         sync.now()
     return out
@@ -151,7 +176,39 @@ def detail(url):
             out[k] = f.result()
         except Exception as e:  # show the error in that section, keep the rest
             out[k + "_error"] = str(e)
+    counts = db.flake_counts()
+    for c in out.get("checks", []):
+        c["flakes"] = counts.get((f'{pr["owner"]}/{pr["repo"]}', c["name"]), 0)
     return out
+
+
+def insights(view):
+    """Turnaround for a view's PRs (merged ones in the window, plus what's open) and the flakiest checks."""
+    prs, views = db.all_prs()
+    ps = [prs[u] for u in views.get(view, []) if u in prs]
+    hours = lambda a, b: (datetime.fromisoformat(b.replace("Z", "+00:00")) - datetime.fromisoformat(a.replace("Z", "+00:00"))).total_seconds() / 3600
+    med = lambda xs: round(statistics.median(xs), 1) if xs else None
+    merged = [p for p in ps if p["merged"]]
+    now = datetime.now(timezone.utc).isoformat()
+    waiting = sorted(([p, hours(p["created"], now)] for p in ps if not p["merged"] and not p["draft"] and not p.get("first_review")
+                      and p["state"] == "OPEN"), key=lambda x: -x[1])
+    counts = db.flake_counts()
+    by_check = {}
+    for f in db.flakes():
+        e = by_check.setdefault((f["repo"], f["name"]), {"repo": f["repo"], "name": f["name"], "count": 0, "last": f["ts"], "prs": []})
+        e["count"] += 1
+        if f["url"] not in e["prs"]:
+            e["prs"].append(f["url"])
+    return {
+        "view": view, "days": config.get("merged_days"), "merged": len(merged),
+        "first_review_h": med([hours(p["created"], p["first_review"]) for p in ps if p.get("first_review")]),
+        "merge_h": med([hours(p["created"], p["merged"]) for p in merged]),
+        "open": sum(1 for p in ps if not p["merged"] and p["state"] == "OPEN"),
+        "waiting": [{"url": p["url"], "title": p["title"], "repo": p["repo"], "number": p["number"], "author": p["author"], "hours": round(h)}
+                    for p, h in waiting[:8]],
+        "flaky": sorted(by_check.values(), key=lambda e: (-e["count"], -e["last"]))[:15],
+        "flaky_total": sum(counts.values()),
+    }
 
 
 def test_integration(what):
@@ -328,6 +385,9 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send(200, detail(qs["url"][0]))
                 if path == "/api/events":
                     return self.send(200, {"events": db.events()})
+                if path == "/api/insights":
+                    view = qs.get("view", ["mine"])[0]
+                    return self.send(200, insights(view if view in github.VIEWS else "mine"))
                 if path == "/api/settings":
                     return self.send(200, settings_data())
                 if path == "/api/setup":
@@ -345,11 +405,14 @@ class Handler(BaseHTTPRequestHandler):
                         raise ValueError("fields must be an object")
                     return self.send(200, {"local": db.local_update(b["url"], b["fields"])})
                 if path == "/api/action":
-                    return self.send(200, {"out": run_op(b.get("url", ""), b.get("op"), b.get("body"))})
+                    return self.send(200, {"out": run_op(b.get("url", ""), b.get("op"), b.get("body"), b.get("arg"))})
                 if path == "/api/batch":
                     return self.send(200, {"results": self.batch(b)})
                 if path == "/api/events/read":
                     db.mark_read(b.get("ids"))
+                    return self.send(200, {"ok": True})
+                if path == "/api/events/delete":
+                    db.delete_events(b.get("ids"))
                     return self.send(200, {"ok": True})
                 if path == "/api/settings":
                     for k, v in b.items():
@@ -378,7 +441,7 @@ class Handler(BaseHTTPRequestHandler):
                     db.local_update(url, b.get("fields") or {})
                     out = "ok"
                 else:
-                    out = run_op(url, b.get("op"), b.get("body"))
+                    out = run_op(url, b.get("op"), b.get("body"), b.get("arg"))
                 results.append({"url": url, "ok": True, "out": out})
             except Exception as e:
                 results.append({"url": url, "ok": False, "out": str(e)})
@@ -390,7 +453,8 @@ class Handler(BaseHTTPRequestHandler):
                 "slack_channel": config.get("slack_channel"), "jira": integrations.jira_ready(),
                 "merge_method": config.get("merge_method"), "stale_days": config.get("stale_days"),
                 "merged_days": config.get("merged_days"), "team_view": config.get("team_view"),
-                "notify_browser": config.get("notify_browser"), "slack_template": config.get("slack_template")}
+                "notify_browser": config.get("notify_browser"), "slack_template": config.get("slack_template"),
+                "retry_max": config.get("retry_max")}
 
     def stream(self):
         self.send_response(200)

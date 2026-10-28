@@ -18,7 +18,7 @@ NODE = {
     "repository": {"name": "web", "owner": {"login": "acme"}}, "labels": {"nodes": []}, "comments": {"totalCount": 0, "nodes": []},
     "reviewRequests": {"nodes": [{"requestedReviewer": {"login": "alice"}}, {"requestedReviewer": {"slug": "devs"}}]},
     "latestReviews": {"nodes": [{"author": {"login": "alice"}, "state": "APPROVED", "submittedAt": "x"}]},
-    "commits": {"nodes": []},
+    "reviews": {"nodes": []}, "reviewThreads": {"nodes": []}, "commits": {"nodes": []},
 }
 
 
@@ -90,17 +90,94 @@ class Inbox(unittest.TestCase):
         data = {"resource": {"body": "<!-- fill this in -->", "createdAt": "0", "author": me,
                 "comments": {"nodes": [{"body": "LGTM", "createdAt": "3", "url": "c1", "author": {"login": "bob"}}]},
                 "reviews": {"nodes": [
-                    {"state": "COMMENTED", "body": "", "submittedAt": "1", "url": "r1", "author": {"login": "alice"},
-                     "comments": {"nodes": [{"body": "nit", "createdAt": "1", "url": "i1", "path": "a.py", "line": None,
-                                             "originalLine": 7, "author": {"login": "alice"}}]}},
-                    {"state": "APPROVED", "body": "", "submittedAt": "2", "url": "r2", "author": {"login": "alice"}, "comments": {"nodes": []}}]}}}
+                    {"state": "COMMENTED", "body": "", "submittedAt": "1", "url": "r1", "author": {"login": "alice"}},
+                    {"state": "APPROVED", "body": "", "submittedAt": "2", "url": "r2", "author": {"login": "alice"}}]},
+                "reviewThreads": {"nodes": [{"id": "T1", "isResolved": False, "isOutdated": True, "path": "a.py", "line": None, "originalLine": 7,
+                    "comments": {"nodes": [{"body": "nit", "createdAt": "1", "url": "i1", "author": {"login": "alice"}},
+                                           {"body": "fixed", "createdAt": "1.5", "url": "i2", "author": me}]}}]}}}
         real, github.gql = github.gql, lambda q, **v: data
         try:
             convo = github.conversation(NODE["url"])
         finally:
             github.gql = real
         self.assertEqual([(c["who"], c["what"], c.get("path"), c.get("line")) for c in convo],
-                         [("alice", "commented on", "a.py", 7), ("alice", "approved", None, None), ("bob", "commented", None, None)])
+                         [("alice", "thread", "a.py", 7), ("alice", "approved", None, None), ("bob", "commented", None, None)])
+        self.assertEqual((convo[0]["id"], convo[0]["outdated"], [c["who"] for c in convo[0]["comments"]]), ("T1", True, ["alice", "me"]))
+
+    def test_new_commits_after_changes_requested_go_back_to_review(self):
+        node = lambda committed: {**NODE, "reviewDecision": "CHANGES_REQUESTED",
+            "latestReviews": {"nodes": [{"author": {"login": "alice"}, "state": "CHANGES_REQUESTED", "submittedAt": "2026-10-03T00:00:00Z"}]},
+            "commits": {"nodes": [{"commit": {"oid": "abc", "committedDate": committed, "statusCheckRollup": None}}]}}
+        before, after = github.flatten(node("2026-10-02T00:00:00Z")), github.flatten(node("2026-10-04T00:00:00Z"))
+        self.assertEqual((before["status"], before["fixes_pushed"]), ("needs_work", False))
+        self.assertEqual((after["status"], after["fixes_pushed"]), ("in_review", True))
+        u = NODE["url"]
+        events = sync.diff({u: {**before, "author": "bob", "reviewers": [{"who": "me", "state": "CHANGES_REQUESTED"}]}},
+                           {u: {**after, "author": "bob", "reviewers": [{"who": "me", "state": "CHANGES_REQUESTED"}]}}, "me", set(), set())
+        self.assertEqual([k for _, k, _ in events], ["pushed"])
+
+    def test_upgrade_has_no_baseline_for_new_fields(self):
+        u = NODE["url"]
+        old = {k: v for k, v in pr(author="bob").items() if k not in ("mentions", "fixes_pushed")}
+        new = pr(author="bob", mentions={"me": {"who": "alice", "at": "1", "text": "@me hi"}}, fixes_pushed=True,
+                 reviewers=[{"who": "me", "state": "CHANGES_REQUESTED"}])
+        self.assertEqual(sync.diff({u: old}, {u: new}, "me", set(), set()), [], "no flood of old mentions after upgrading")
+        edited = {**new, "mentions": {"me": {"who": "alice", "at": "1", "text": "@me hi (edited)"}}}
+        self.assertEqual(sync.diff({u: new}, {u: edited}, "me", set(), set()), [], "editing a comment isn't a new mention")
+
+    def test_mentions_follow_and_mute(self):
+        u = NODE["url"]
+        c = [{"body": "@Me can you look? cc @bob, not foo@me.com", "createdAt": "5", "author": {"login": "alice"}}]
+        self.assertEqual(set(github.mentions(c)), {"me", "bob"})
+        old, new = pr(author="bob"), pr(author="bob", comments=1, mentions=github.mentions(c), ci="FAILURE")
+        kinds = lambda local=None: [k for _, k, _ in sync.diff({u: old}, {u: new}, "me", set(), set(), local)]
+        self.assertEqual(kinds(), ["mention"])  # someone else's PR: only the mention
+        self.assertEqual(kinds({u: {"following": True}}), ["mention", "ci_failed"])  # the comment event folds into the mention
+        self.assertEqual(kinds({u: {"following": True, "muted": True}}), [])
+
+    def test_flaky_checks_and_retry_until_green(self):
+        u, me = NODE["url"], "me"
+        p = pr(author=me, head="h1", merged=None, state="OPEN")
+        run = lambda *states: {u: [{"name": f"CI / t{i}", "state": s, "run": 9} for i, s in enumerate(states)]}
+        sync.record_checks({u: p}, run("FAILURE", "SUCCESS"))
+        sync.record_checks({u: p}, run("IN_PROGRESS", "SUCCESS"))  # re-run in progress keeps the failure in mind
+        self.assertEqual(sync.record_checks({u: p}, run("SUCCESS", "SUCCESS")), [(u, "acme/web", "CI / t0")])
+        self.assertEqual(sync.record_checks({u: {**p, "head": "h2"}}, run("SUCCESS", "SUCCESS")), [], "a new commit isn't a flake")
+        self.assertEqual(db.flake_counts()[("acme/web", "CI / t0")], 1)
+        twin = {u: [{"name": "CI / t9", "state": "SUCCESS", "run": 1}, {"name": "CI / t9", "state": "FAILURE", "run": 2}]}
+        sync.record_checks({u: p}, twin)
+        self.assertEqual(sync.record_checks({u: p}, twin), [], "two runs under one name aren't a flake every sync")
+
+        reruns = []
+        real, github.rerun_runs = github.rerun_runs, lambda url, runs: reruns.append(sorted(runs))
+        try:
+            db.local_update(u, {"retry": {"head": "h1", "attempts": 1, "max": 2, "at": 0}})
+            step = lambda states, head="h1": sync.retries({u: {**p, "head": head}}, run(*states), me, db.local_all())
+            self.assertEqual(step(["FAILURE"]), []); self.assertEqual(reruns, [[9]])
+            self.assertEqual(db.local_get(u)["retry"]["attempts"], 2)
+            db.local_update(u, {"retry": {**db.local_get(u)["retry"], "at": 0}})
+            self.assertEqual(step(["IN_PROGRESS"]), [], "waits while the re-run is going")
+            self.assertEqual([k for _, k, _ in step(["FAILURE"])], ["retry_failed"], "gives up at max attempts")
+            self.assertNotIn("retry", db.local_get(u)); self.assertEqual(db.local_get(u)["retry_done"], "h1")
+            db.local_update(u, {"retry": {"head": "h1", "attempts": 1, "max": 3, "at": 0}})
+            self.assertIn("after 1 re-run:", step(["SUCCESS"])[0][2])
+            db.local_update(u, {"retry": {"head": "h1", "attempts": 1, "max": 3, "at": 0}})
+            self.assertEqual(step(["FAILURE"], head="h2"), []); self.assertNotIn("retry", db.local_get(u), "new commits stop it quietly")
+            config.put("retry_flaky", True)
+            db.local_update(u, {"retry_done": None})
+            db.local_update(u, {"retry": {"head": "h1", "attempts": 1, "max": 3, "at": 0}})
+            self.assertEqual([k for _, k, _ in step(["CANCELLED"])], [], "cancelled counts as failed, so it re-runs")
+            self.assertEqual(reruns[-1], [9])
+            db.local_update(u, {"retry": None, "retry_done": None})
+            self.assertEqual(step(["FAILURE", "SUCCESS"]), [], "one flake isn't a pattern yet")
+            db.save_checks([], [(u, "acme/web", "CI / t0")])
+            self.assertEqual([k for _, k, _ in step(["FAILURE", "SUCCESS"])], ["retrying"], "two flakes: auto-retry kicks in")
+            server.stop_retry({**p, "url": u})
+            self.assertEqual(step(["FAILURE", "SUCCESS"]), [], "Stop sticks for this commit even with auto-retry on")
+        finally:
+            github.rerun_runs = real
+            config.put("retry_flaky", None)
+            db.local_update(u, {"retry": None, "retry_done": None})
 
     def test_diff_ignores_others_and_new(self):
         u = NODE["url"]

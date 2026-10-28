@@ -35,6 +35,7 @@
       <button :class="{ on: layout === 'table' }" @click="layout = 'table'" title="Table (t)"><svg class="ic"><use href="/static/icons.svg#table-2"/></svg></button>
     </nav>
     <button class="icon-btn lg" @click="openStandup()" title="Standup summary (u)"><svg class="ic"><use href="/static/icons.svg#clipboard"/></svg></button>
+    <button class="icon-btn lg" @click="openInsights()" title="Insights: turnaround and flaky checks (s)"><svg class="ic"><use href="/static/icons.svg#chart-column"/></svg></button>
     <button class="icon-btn lg badge-wrap" @click="openInbox()" title="Inbox (i)">
       <svg class="ic"><use href="/static/icons.svg#bell"/></svg><b class="badge" x-show="unread" x-text="unread > 99 ? '99+' : unread"></b>
     </button>
@@ -65,6 +66,9 @@
     </nav>
     <button class="fchip toggle-chip" :class="{ on: showHidden }" @click="showHidden = !showHidden" title="Show PRs you hid or snoozed">
       <svg class="ic"><use href="/static/icons.svg#eye-off"/></svg>Hidden &amp; snoozed</button>
+    <button class="fchip toggle-chip" :class="{ on: heat }" @click="heat = !heat" title="Color open PRs by how long they've been open, oldest first in each column (g)">
+      <svg class="ic"><use href="/static/icons.svg#thermometer"/></svg>Age</button>
+    <span class="heat-legend" x-show="heat"><template x-for="(h, i) in HEAT" :key="i"><span :class="'heat-' + i" :title="h[1]"><i></i><span x-text="['<1d', '1–3d', '3–7d', '1–2w', '2w+'][i]"></span></span></template></span>
     <span class="grow"></span>
     <span class="dim small" x-show="data && q" x-text="list.length + ' match'"></span>
     <button class="hint" @click="panel = 'help'"><svg class="ic"><use href="/static/icons.svg#keyboard"/></svg> Shortcuts <kbd>?</kbd></button>
@@ -145,7 +149,7 @@
   <button class="icon-btn" @click="clearPicked()" title="Clear selection (esc)"><svg class="ic"><use href="/static/icons.svg#x"/></svg></button>
 </div>
 
-<div class="scrim" x-show="cur || ['inbox', 'settings', 'standup', 'help'].includes(panel)" x-transition.opacity @click="sel = null; panel = null"></div>
+<div class="scrim" x-show="cur || ['inbox', 'settings', 'standup', 'help', 'insights'].includes(panel)" x-transition.opacity @click="sel = null; panel = null"></div>
 <aside class="drawer" x-show="cur && !panel" x-transition:enter-start="off" x-transition:leave-end="off">
   <template x-if="pane">
     <div>
@@ -164,7 +168,19 @@
           <a class="chip jira" :class="'jc-' + (jira(k)?.category || '')" :href="jiraHref(k)" target="_blank"><span x-text="k"></span><span class="jstat" x-show="jira(k)" x-text="jira(k)?.status + (jira(k)?.assignee ? ' · ' + jira(k).assignee : '')"></span></a>
         </template>
         <template x-for="l in pane.labels" :key="l"><span class="chip" x-text="l"></span></template>
-        <template x-for="f in flags(pane)" :key="f[0]"><span class="chip flag" :class="f[1]"><svg class="ic" x-show="f[2]"><use :href="'/static/icons.svg#' + f[2]"/></svg><span x-text="f[3]"></span></span></template>
+        <template x-for="f in flags(pane, true)" :key="f[0]"><span class="chip flag" :class="f[1]"><svg class="ic" x-show="f[2]"><use :href="'/static/icons.svg#' + f[2]"/></svg><span x-text="f[3]"></span></span></template>
+      </div>
+      <div class="stack" x-show="stack(pane).length">
+        <svg class="ic"><use href="/static/icons.svg#layers"/></svg><span class="dim small">Stack</span>
+        <template x-for="(s, i) in stack(pane)" :key="s.url">
+          <span class="stack-step"><svg class="ic dim" x-show="i"><use href="/static/icons.svg#chevron-right"/></svg>
+            <button class="chip" :class="{ on: s.url === pane.url }" @click="sel = s.url" :title="s.title + ' (' + statusLabel(s.status) + ')'"><i class="sdot" :class="'s-' + s.status"></i><span x-text="'#' + s.number"></span></button></span>
+        </template>
+      </div>
+      <div class="nudge" x-show="rerequest(pane)">
+        <span x-text="rerequest(pane)?.why"></span>
+        <button class="btn sm" @click="act('rerequest', pane, { arg: rerequest(pane).who.join(',') })" :disabled="isBusy('rerequest', pane)">
+          <svg class="ic"><use href="/static/icons.svg#user-plus"/></svg><span x-text="'Re-request review from ' + (rerequest(pane)?.who || []).join(', ')"></span></button>
       </div>
 
       <div class="quick">
@@ -192,6 +208,9 @@
       <section>
         <h4><svg class="ic"><use href="/static/icons.svg#message-square"/></svg> Conversation
           <span x-show="convoCount()" x-text="convoCount()"></span>
+          <span class="amber" x-show="openThreads()" x-text="openThreads() + ' unresolved'"></span>
+          <button class="btn sm" x-show="canFix(pane)" @click="act('fix', pane)" :title="'Opens ' + cfg.ai_name + ' in a worktree with the unresolved feedback loaded. It asks before changing files and never pushes.'">
+            <svg class="ic"><use href="/static/icons.svg#sparkles"/></svg><span x-text="'Fix with ' + cfg.ai_name"></span></button>
           <a :href="pane.url" target="_blank">open on GitHub</a></h4>
         <ol class="convo" x-show="convoCount()">
           <template x-for="g in convo()" :key="g.key">
@@ -212,21 +231,49 @@
                   </div>
                 </div>
               </template>
-              <template x-if="g.type === 'code'">
-                <div class="ce">
-                  <span class="node"><svg class="ic"><use href="/static/icons.svg#code"/></svg></span>
-                  <div class="cthread">
-                    <a :href="g.url" target="_blank" x-text="g.path + (g.line ? ':' + g.line : '')"></a>
-                    <template x-for="c in g.items" :key="c.url">
-                      <div class="ce">
-                        <img class="av" :src="avatar(c.who)" alt="" onerror="this.style.visibility='hidden'">
-                        <div>
-                          <div class="ce-head"><b x-text="c.who"></b>
-                            <a class="t" :href="c.url" target="_blank" :title="new Date(c.at).toLocaleString()" x-text="ago(c.at)"></a></div>
-                          <template x-if="c.text"><div class="fold" x-data="{ open: false, long: false }" x-init="$nextTick(() => long = $refs.b.scrollHeight > $refs.b.clientHeight + 8)">
+              <template x-if="g.type === 'thread'">
+                <div class="ce" x-data="{ show: !g.t.resolved }">
+                  <span class="node" :class="{ done: g.t.resolved }"><svg class="ic"><use :href="'/static/icons.svg#' + (g.t.resolved ? 'circle-check' : 'code')"/></svg></span>
+                  <div class="cthread" :class="{ resolved: g.t.resolved }">
+                    <div class="cthread-h">
+                      <a :href="g.t.url" target="_blank" x-text="g.t.path + (g.t.line ? ':' + g.t.line : '')"></a>
+                      <span class="tagline" x-show="g.t.outdated" title="The code this comment was on has changed since">outdated</span>
+                      <button class="more-link" x-show="g.t.resolved" @click="show = !show" x-text="show ? 'Hide' : 'Resolved · show'"></button>
+                    </div>
+                    <template x-if="show">
+                      <div>
+                        <template x-for="c in g.t.comments" :key="c.url">
+                          <div class="ce">
+                            <img class="av" :src="avatar(c.who)" alt="" onerror="this.style.visibility='hidden'">
+                            <div>
+                              <div class="ce-head"><b x-text="c.who"></b>
+                                <a class="t" :href="c.url" target="_blank" :title="new Date(c.at).toLocaleString()" x-text="ago(c.at)"></a></div>
+                              <template x-if="c.text"><div class="fold" x-data="{ open: false, long: false }" x-init="$nextTick(() => long = $refs.b.scrollHeight > $refs.b.clientHeight + 8)">
                     <div class="md" x-ref="b" :class="{ clamp: !open, fade: long && !open }" x-html="md(c.text)"></div>
                     <button class="more-link" x-show="long" @click="open = !open" x-text="open ? 'Show less' : 'Show more'"></button>
                   </div></template>
+                            </div>
+                          </div>
+                        </template>
+                        <div class="thread-acts" x-show="!pane.merged">
+                          <template x-if="replyFor !== g.t.id">
+                            <div class="row tight">
+                              <button class="btn sm ghost" @click="startReply(g.t)"><svg class="ic"><use href="/static/icons.svg#reply"/></svg>Reply</button>
+                              <button class="btn sm ghost" @click="act(g.t.resolved ? 'thread_unresolve' : 'thread_resolve', pane, { arg: g.t.id })"
+                                :disabled="isBusy('thread_resolve', pane) || isBusy('thread_unresolve', pane)" x-text="g.t.resolved ? 'Unresolve' : 'Resolve'"></button>
+                            </div>
+                          </template>
+                          <template x-if="replyFor === g.t.id">
+                            <div class="reply inline">
+                              <textarea :id="'reply-' + g.t.id" rows="2" x-model="replyBody" aria-label="Reply" placeholder="Reply (Ctrl Enter to send, Esc to cancel)"
+                                @keydown.ctrl.enter="replyBody && act('thread_reply', pane, { arg: g.t.id, body: replyBody })"
+                                @keydown.meta.enter="replyBody && act('thread_reply', pane, { arg: g.t.id, body: replyBody })" @keydown.escape.stop="replyFor = null"></textarea>
+                              <div class="acts">
+                                <button class="btn sm" @click="replyFor = null">Cancel</button>
+                                <button class="btn sm primary" @click="act('thread_reply', pane, { arg: g.t.id, body: replyBody })" :disabled="!replyBody || isBusy('thread_reply', pane)">Reply</button>
+                              </div>
+                            </div>
+                          </template>
                         </div>
                       </div>
                     </template>
@@ -240,7 +287,7 @@
         <div class="dim small" x-show="!detail.conversation && !detail.conversation_error">Loading…</div>
         <div class="err small" x-show="detail.conversation_error" x-text="detail.conversation_error"></div>
         <div class="reply" x-show="!pane.merged">
-          <textarea rows="2" x-model="cbody" aria-label="Comment" placeholder="Leave a comment (Ctrl Enter to send)" @keydown.ctrl.enter="cbody && act('comment', pane)" @keydown.meta.enter="cbody && act('comment', pane)"></textarea>
+          <textarea rows="2" x-ref="composer" x-model="cbody" aria-label="Comment" placeholder="Leave a comment (m to jump here, Ctrl Enter to send)" @keydown.ctrl.enter="cbody && act('comment', pane)" @keydown.meta.enter="cbody && act('comment', pane)"></textarea>
           <div class="acts">
             <template x-if="pane.author !== data?.me"><button class="btn" @click="act('request_changes', pane)" :disabled="isBusy('request_changes', pane)">Request changes</button></template>
             <template x-if="pane.author !== data?.me"><button class="btn go" :class="{ armed: armed === 'approve' + pane.url }" @click="act('approve', pane)" :disabled="isBusy('approve', pane)"><svg class="ic"><use href="/static/icons.svg#check"/></svg><span x-text="armed === 'approve' + pane.url ? 'Click to confirm' : 'Approve'"></span></button></template>
@@ -278,14 +325,26 @@
         <ul class="checks">
           <template x-for="c in (detail.checks || []).slice(0, 40)" :key="c.name + c.url">
             <li><i class="dot" :class="{ SUCCESS: 'SUCCESS', FAILURE: 'FAILURE', ERROR: 'FAILURE', TIMED_OUT: 'FAILURE', CANCELLED: 'FAILURE' }[c.state] || (['SKIPPED', 'NEUTRAL'].includes(c.state) ? '' : 'PENDING')"></i>
-              <a :href="c.url" target="_blank" x-text="c.name"></a><span class="dim small" x-text="c.state.toLowerCase().replace('_', ' ')"></span></li>
+              <a :href="c.url" target="_blank" x-text="c.name"></a>
+              <span class="chip flag amber" x-show="c.flakes" :title="'Failed, then passed on a re-run of the same commit, ' + c.flakes + (c.flakes > 1 ? ' times' : ' time') + ' in 30 days'" x-text="'flaky ×' + c.flakes"></span>
+              <span class="dim small" x-text="c.state.toLowerCase().replace('_', ' ')"></span></li>
           </template>
         </ul>
         <div class="dim small" x-show="detail.checks && !detail.checks.length">No checks on the latest commit.</div>
         <div class="dim small" x-show="!detail.checks && !detail.checks_error">Loading…</div>
         <div class="err small" x-show="detail.checks_error" x-text="detail.checks_error"></div>
-        <button class="btn" x-show="(detail.checks || []).some(c => c.run && ['FAILURE', 'TIMED_OUT', 'CANCELLED'].includes(c.state))" @click="act('rerun', pane)" :disabled="isBusy('rerun', pane)">
-          <svg class="ic"><use href="/static/icons.svg#refresh-cw"/></svg>Re-run failed jobs</button>
+        <div class="retry" x-show="L(pane).retry">
+          <svg class="ic spin-slow"><use href="/static/icons.svg#repeat"/></svg>
+          <span x-text="'Retrying until green: ' + (L(pane).retry?.attempts || 0) + ' of ' + (L(pane).retry?.max || 0) + ' re-runs' + (L(pane).retry?.auto ? ' (known flaky)' : '')"></span>
+          <span class="grow"></span><button class="btn sm" @click="act('retry_stop', pane)">Stop</button>
+        </div>
+        <div class="acts" x-show="!pane.merged && (detail.checks || []).some(c => c.run && c.state !== 'SUCCESS')">
+          <button class="btn" x-show="(detail.checks || []).some(c => c.run && ['FAILURE', 'TIMED_OUT', 'CANCELLED', 'ERROR', 'STARTUP_FAILURE'].includes(c.state))" @click="act('rerun', pane)" :disabled="isBusy('rerun', pane)">
+            <svg class="ic"><use href="/static/icons.svg#refresh-cw"/></svg>Re-run failed jobs</button>
+          <button class="btn" x-show="!L(pane).retry" @click="act('retry', pane)" :disabled="isBusy('retry', pane)"
+            :title="'Re-runs failed GitHub Actions jobs each time they fail, up to ' + (cfg.retry_max || 3) + ' times, until CI passes. Stops on new commits.'">
+            <svg class="ic"><use href="/static/icons.svg#repeat"/></svg>Retry until green</button>
+        </div>
       </section>
 
       <section x-show="cfg.slack">
@@ -329,6 +388,8 @@
           </label>
           <label class="toggle"><input type="checkbox" :checked="!!L(pane).posted" @change="setLocal(pane, 'posted', $event.target.checked ? new Date().toISOString() : null)"><span>Announced</span></label>
           <label class="toggle"><input type="checkbox" :checked="!!L(pane).hidden" @change="setLocal(pane, 'hidden', $event.target.checked || null)"><span>Hide</span></label>
+          <label class="toggle" x-show="pane.author !== data?.me" title="Get its CI, review, comment, and merge updates in your inbox, like your own PRs"><input type="checkbox" :checked="!!L(pane).following" @change="setLocal(pane, 'following', $event.target.checked || null)"><span>Follow</span></label>
+          <label class="toggle" title="No inbox items or notifications for this PR"><input type="checkbox" :checked="!!L(pane).muted" @change="setLocal(pane, 'muted', $event.target.checked || null)"><span>Mute</span></label>
         </div>
         <div class="row tight">
           <label class="grow-label"><svg class="ic"><use href="/static/icons.svg#hourglass"/></svg><input placeholder="Waiting on… (a teammate, QA, deploy)" :value="L(pane).waiting || ''" @change="setLocal(pane, 'waiting', $event.target.value.trim() || null)"></label>
@@ -364,16 +425,27 @@
     <h3>Inbox</h3><span class="grow"></span>
     <button class="btn sm" x-show="'Notification' in window && cfg.notify_browser && Notification.permission === 'default'" @click="askNotify()"><svg class="ic"><use href="/static/icons.svg#bell"/></svg>Desktop alerts</button>
     <button class="btn sm" @click="readAll()" x-show="unread">Mark all read</button>
+    <button class="btn sm" @click="deleteEvents(null)" x-show="events.some(e => e.read)" title="Delete every read item">Clear read</button>
     <button class="close" @click="panel = null"><svg class="ic"><use href="/static/icons.svg#x"/></svg></button>
   </div>
+  <nav class="seg inbox-filter" x-show="events.length">
+    <button :class="{ on: inboxFilter === 'all' }" @click="inboxFilter = 'all'">All</button>
+    <button :class="{ on: inboxFilter === 'unread' }" @click="inboxFilter = 'unread'">Unread<b x-text="events.filter(e => !e.read).length"></b></button>
+    <button :class="{ on: inboxFilter === 'mentions' }" @click="inboxFilter = 'mentions'"><svg class="ic"><use href="/static/icons.svg#at-sign"/></svg>Mentions<b x-text="events.filter(e => e.kind === 'mention').length"></b></button>
+  </nav>
   <ul class="events">
-    <template x-for="ev in events" :key="ev.id">
-      <li :class="{ unread: !ev.read }" @click="openEvent(ev)">
+    <template x-for="ev in shownEvents" :key="ev.id">
+      <li :class="{ unread: !ev.read, mention: ev.kind === 'mention' }" @click="openEvent(ev)">
         <svg class="ic" :class="'k-' + ev.kind"><use :href="'/static/icons.svg#' + (EVENT_ICON[ev.kind] || 'bell')"/></svg>
         <span class="grow" x-text="ev.text"></span><span class="t" x-text="ago(ev.ts * 1000)"></span>
+        <span class="ev-acts">
+          <button class="icon-btn" x-show="ev.url && !L(prAt(ev.url)).muted" @click.stop="muteFromEvent(ev)" title="Mute this PR"><svg class="ic"><use href="/static/icons.svg#bell-off"/></svg></button>
+          <button class="icon-btn" @click.stop="deleteEvents([ev.id])" title="Delete"><svg class="ic"><use href="/static/icons.svg#trash-2"/></svg></button>
+        </span>
       </li>
     </template>
   </ul>
+  <div class="empty small" x-show="events.length && !shownEvents.length"><p x-text="inboxFilter === 'mentions' ? 'No mentions. When someone @mentions you on a PR, it shows up here.' : 'All caught up.'"></p></div>
   <div class="empty" x-show="!events.length"><svg class="ic big"><use href="/static/icons.svg#inbox"/></svg><p>Nothing yet. New reviews, CI changes, comments, and merges on your PRs land here.</p></div>
 </aside>
 
@@ -535,7 +607,8 @@
         <dt><kbd>p</kbd> <kbd>y</kbd></dt><dd>Announce in Slack · copy link</dd><dt><kbd>a</kbd></dt><dd>Approve (press twice)</dd>
         <dt><kbd>z</kbd> <kbd>h</kbd></dt><dd>Snooze a day · hide</dd><dt><kbd>O</kbd></dt><dd>Open on GitHub</dd>
         <dt><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd></dt><dd>Mine · Review requested · Team</dd><dt><kbd>b</kbd> <kbd>t</kbd></dt><dd>Board · table</dd>
-        <dt><kbd>i</kbd> <kbd>u</kbd> <kbd>,</kbd></dt><dd>Inbox · standup · settings</dd><dt><kbd>r</kbd></dt><dd>Sync now</dd>
+        <dt><kbd>m</kbd></dt><dd>Comment on the PR</dd><dt><kbd>g</kbd></dt><dd>Color PRs by age</dd>
+        <dt><kbd>i</kbd> <kbd>u</kbd> <kbd>s</kbd></dt><dd>Inbox · standup · insights</dd><dt><kbd>,</kbd> <kbd>r</kbd></dt><dd>Settings · sync now</dd>
       </dl>
     </div>
     <div>
@@ -574,6 +647,45 @@
         <span x-text="standup.summarizing ? 'Writing summary…' : standup.summary ? 'Rewrite summary' : 'Summarize with ' + cfg.ai_name"></span></button>
       <span class="dim small">Edit either one before copying.</span>
     </div>
+  </div>
+</div>
+
+<div class="modal" x-show="panel === 'insights'" x-transition.opacity>
+  <div class="insights">
+    <button class="close abs" @click="panel = null"><svg class="ic"><use href="/static/icons.svg#x"/></svg></button>
+    <h3>Insights</h3>
+    <nav class="seg">
+      <button :class="{ on: insightsView === 'mine' }" @click="openInsights('mine')">Your PRs</button>
+      <button :class="{ on: insightsView === 'review' }" @click="openInsights('review')">Your review queue</button>
+      <button :class="{ on: insightsView === 'team' }" @click="openInsights('team')" x-show="cfg.team_view">Team</button>
+    </nav>
+    <template x-if="insights">
+      <div>
+        <dl class="stats">
+          <div><dt>Time to first review</dt><dd x-text="hours(insights.first_review_h)"></dd><span class="dim small">median, opened to first review</span></div>
+          <div><dt>Time to merge</dt><dd x-text="hours(insights.merge_h)"></dd><span class="dim small" x-text="'median over ' + insights.merged + ' merged in ' + insights.days + ' days'"></span></div>
+          <div><dt>Open</dt><dd x-text="insights.open"></dd><span class="dim small" x-text="insights.waiting.length + ' with no review yet'"></span></div>
+        </dl>
+        <h4>Waiting longest for a first review</h4>
+        <ul class="ilist" x-show="insights.waiting.length">
+          <template x-for="w in insights.waiting" :key="w.url">
+            <li @click="panel = null; sel = w.url"><span class="age" :class="'heat-' + HEAT.findIndex(([max]) => w.hours / 24 < max)" x-text="hours(w.hours)"></span>
+              <span class="repo" x-text="w.repo + '#' + w.number"></span><span class="grow ellipsis" x-text="w.title"></span><span class="dim small" x-text="w.author"></span></li>
+          </template>
+        </ul>
+        <p class="dim small" x-show="!insights.waiting.length">Every open PR here has had a review.</p>
+        <h4>Flaky checks <span class="dim small">failed, then passed on the same commit, last 30 days</span></h4>
+        <ul class="ilist" x-show="insights.flaky.length">
+          <template x-for="f in insights.flaky" :key="f.repo + f.name">
+            <li class="static"><span class="chip flag amber" x-text="'×' + f.count"></span><span class="grow ellipsis"><span class="repo" x-text="f.repo.split('/')[1]"></span> <span x-text="f.name"></span></span>
+              <span class="dim small" x-text="ago(f.last * 1000) + ' ago'"></span>
+              <template x-for="u in f.prs.slice(0, 3)" :key="u"><button class="chip" x-show="prAt(u)" @click="panel = null; sel = u" x-text="'#' + u.split('/').pop()"></button></template></li>
+          </template>
+        </ul>
+        <p class="dim small" x-show="!insights.flaky.length">No flakes seen yet. prdash watches every check while it syncs, so this fills in over time.</p>
+      </div>
+    </template>
+    <p class="dim small" x-show="!insights">Loading…</p>
   </div>
 </div>
 

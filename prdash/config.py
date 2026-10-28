@@ -74,6 +74,10 @@ FIELDS = {
     "api_model": ("", "str", "AI", "API model", "e.g. deepseek-chat, grok-4, gpt-5-mini, qwen3"),
     "review_prompt": (DEFAULT_REVIEW_PROMPT, "text", "AI", "Extra review instructions",
                       "Appended to every review, e.g. house style rules or a skill to use."),
+    "retry_max": (3, "int", "CI", "Retry until green: attempts",
+                  "How many times to re-run failed GitHub Actions jobs before giving up. 1 to 10."),
+    "retry_flaky": (False, "bool", "CI", "Auto-retry known flaky checks",
+                    "On your PRs, re-run failures right away when every failing check has flaked at least twice in 30 days."),
     "auto_update": (True, "bool", "GitHub", "Update on start",
                     "Pull the latest prdash when it starts (skipped if your checkout has local changes)."),
     "notify_browser": (True, "bool", "Notifications", "Browser notifications", "While a prdash tab is open."),
@@ -125,6 +129,8 @@ def put(key, value):
     value = _parse(kind, value)
     if key == "poll_seconds":
         value = max(20, value)
+    if key == "retry_max":
+        value = max(1, min(10, value))
     db.put("setting:" + key, value)
 
 

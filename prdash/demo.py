@@ -59,9 +59,20 @@ def make_prs():
             "labels": rnd.choice(LABELS), "comments": rnd.randint(0, 9), "jira": [key] if key else [], "reviewers": reviewers,
             "bump": {"who": rnd.choice(PEOPLE), "at": iso(now - timedelta(hours=rnd.uniform(2, 40)))} if i in (12, 21, 22) else None,
             "urgent": bool(github.URGENT.search(title)),
+            "requested": [r["who"] for r in reviewers if r["state"] == "REQUESTED"],
+            "head": f"{i:02d}" + "c0ffee" * 6, "pushed": iso(updated), "fixes_pushed": i in (2, 12),
+            "first_review": iso(created + timedelta(hours=rnd.uniform(1, 30))) if kind not in ("draft", "review") or i % 3 else None,
+            "open_threads": {2: 2, 12: 1, 15: 1, 6: 1}.get(i, 0), "mentions": {},
         }
+        if p["fixes_pushed"]:
+            p["reviewers"][0]["state"] = "CHANGES_REQUESTED"
+            p["review"] = "CHANGES_REQUESTED"
         p["status"] = github.status(p)
         prs[p["url"]] = p
+    # a three-PR stack in api: each one targets the branch of the one below it
+    api = [p for p in prs.values() if p["repo"] == "api" and not p["merged"] and p["author"] == ME][:3]
+    for below, above in zip(api, api[1:]):
+        above["base"] = below["branch"]
     return prs
 
 
@@ -98,7 +109,14 @@ def seed():
         "2. No test covers an override lower than the global default.\n\n"
         "Nits:\n- Rename `ovr` to `override` in limits.py:41.\n\n"
         "Verdict: comment. Solid change; fix the cache stampede before merging."))
+    db.local_update(urls[1], {"retry": {"head": prs[urls[1]]["head"], "attempts": 1, "max": 3, "at": time.time()}})
+    db.save_checks([], [(urls[i], f"acme/{prs[urls[i]]['repo']}", name) for i, name in
+                        [(1, "CI / unit tests"), (1, "CI / unit tests"), (11, "CI / unit tests"), (4, "CI / e2e"), (14, "CI / e2e"),
+                         (6, "CI / e2e"), (21, "CI / e2e"), (8, "CI / lint")]])
     db.add_events([(urls[7], "review", "maya-chen approved web#169 Validate refund amounts against the original charge"),
+                   (urls[4], "mention", f'theo-park mentioned you on {label(prs[urls[4]])}: "@octo-dev does the queue worker need the new env var too?"'),
+                   (urls[2], "pushed", f"{prs[urls[2]]['author']} pushed new commits after your change request: {label(prs[urls[2]])}"),
+                   (urls[1], "retrying", f"Retrying known-flaky checks: {label(prs[urls[1]])}"),
                    (urls[1], "ci_failed", "CI failed: web#127 Add dark mode to the settings page"),
                    (urls[4], "review_requested", "theo-park requested your review: infra#148 Migrate cron jobs to the queue worker"),
                    (urls[6], "review_done", "Claude review ready: api#162 Add per-tenant rate limit overrides"),
@@ -122,12 +140,18 @@ def detail(pr):
               "text": "Do we have numbers on how often this fires in prod? Want to make sure the backoff cap is right."},
              {"who": pr["author"], "what": "commented", "at": at(26), "url": pr["url"] + "#c2",
               "text": "About 40 a day, mostly during the nightly sync. The cap is 5 minutes, which covers the longest outage we've seen."},
-             {"who": reviewer, "what": "commented on", "at": at(20), "url": pr["url"] + "#r1", "path": f"{pr['repo']}/handlers.py", "line": 88,
-              "text": "This retries on every 4xx too. Can we limit it to 429 and 5xx?"},
-             {"who": pr["author"], "what": "commented on", "at": at(18), "url": pr["url"] + "#r2", "path": f"{pr['repo']}/handlers.py", "line": 88,
-              "text": "Good catch, fixed in the latest push."},
+             {"who": reviewer, "what": "thread", "at": at(20), "url": pr["url"] + "#r1", "id": "T1", "resolved": False, "outdated": False,
+              "path": f"{pr['repo']}/handlers.py", "line": 88, "comments": [
+                  {"who": reviewer, "at": at(20), "url": pr["url"] + "#r1", "text": "This retries on every 4xx too. Can we limit it to 429 and 5xx?"},
+                  {"who": pr["author"], "at": at(18), "url": pr["url"] + "#r2", "text": "Good catch. Fixed in the latest push, and added a test for 404."}]},
+             {"who": "priya-n", "what": "thread", "at": at(19), "url": pr["url"] + "#r4", "id": "T2", "resolved": True, "outdated": True,
+              "path": f"{pr['repo']}/backoff.py", "line": 12, "comments": [
+                  {"who": "priya-n", "at": at(19), "url": pr["url"] + "#r4", "text": "nit: `MAX_DELAY` reads better than `CAP`."},
+                  {"who": pr["author"], "at": at(17), "url": pr["url"] + "#r5", "text": "Renamed."}]},
              {"who": reviewer, "what": "approved", "at": at(3), "url": pr["url"] + "#r3", "text": "Looks good once CI is green."}]
-    return {"checks": [{"name": f"CI / {n}", "state": s, "url": pr["url"] + "/checks", "run": 1} for n, s in checks],
+    flakes = db.flake_counts()
+    return {"checks": [{"name": f"CI / {n}", "state": s, "url": pr["url"] + "/checks", "run": 1,
+                        "flakes": flakes.get((f"acme/{pr['repo']}", f"CI / {n}"), 0)} for n, s in checks],
             "conversation": convo,
             "git": {"clone": f"~/code/{pr['repo']}", "worktree": None, "branch": "main", "dirty": False, "on_pr": False}}
 

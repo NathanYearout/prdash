@@ -18,6 +18,10 @@ CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL
                                    text TEXT NOT NULL, read INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS reviews (url TEXT PRIMARY KEY, status TEXT, started REAL, finished REAL, output TEXT);
 CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS check_state (repo TEXT NOT NULL, head TEXT NOT NULL, name TEXT NOT NULL, state TEXT NOT NULL,
+                                        PRIMARY KEY (repo, head, name));
+CREATE TABLE IF NOT EXISTS flakes (id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL NOT NULL, repo TEXT NOT NULL, name TEXT NOT NULL,
+                                   url TEXT NOT NULL);
 """
 
 
@@ -132,6 +136,15 @@ def events(limit=200):
     return [dict(zip(("id", "ts", "url", "kind", "text", "read"), r)) for r in rows]
 
 
+def delete_events(ids=None):
+    """Delete these events, or every read one when ids is None."""
+    if ids is None:
+        q("DELETE FROM events WHERE read = 1")
+    else:
+        with tx() as c:
+            c.executemany("DELETE FROM events WHERE id = ?", [(i,) for i in ids])
+
+
 def mark_read(ids=None):
     if ids is None:
         q("UPDATE events SET read = 1 WHERE read = 0")
@@ -139,6 +152,30 @@ def mark_read(ids=None):
         with tx() as c:
             c.executemany("UPDATE events SET read = 1 WHERE id = ?", [(i,) for i in ids])
     q("DELETE FROM events WHERE id <= (SELECT MAX(id) FROM events) - 1000")  # keep the inbox bounded
+
+
+# ---- CI checks, for spotting flaky ones
+
+def save_checks(rows, flakes):
+    """rows: every check's current state as (repo, head, name, state); flakes: [(url, repo, name)] seen this sync.
+    Only the commits in rows are kept: once a PR moves on, its old commit can't flake again."""
+    now = time.time()
+    with tx() as c:
+        c.execute("DELETE FROM check_state")
+        c.executemany("INSERT OR REPLACE INTO check_state (repo, head, name, state) VALUES (?, ?, ?, ?)", rows)
+        c.executemany("INSERT INTO flakes (ts, repo, name, url) VALUES (?, ?, ?, ?)", [(now, r, n, u) for u, r, n in flakes])
+        c.execute("DELETE FROM flakes WHERE ts < ?", (now - 90 * 86400,))
+
+
+def flake_counts(days=30):
+    """{(repo, check name): flakes in the last `days`}"""
+    rows = q("SELECT repo, name, COUNT(*) FROM flakes WHERE ts > ? GROUP BY repo, name", time.time() - days * 86400)
+    return {(r, n): k for r, n, k in rows}
+
+
+def flakes(days=30):
+    rows = q("SELECT ts, repo, name, url FROM flakes WHERE ts > ? ORDER BY ts DESC", time.time() - days * 86400)
+    return [dict(zip(("ts", "repo", "name", "url"), r)) for r in rows]
 
 
 # ---- Claude reviews

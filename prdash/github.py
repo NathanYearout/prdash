@@ -10,17 +10,24 @@ JIRA_KEY = re.compile(r"\b[A-Z][A-Z0-9]+-\d+\b")
 BUMP = re.compile(r"\bbump(ed|ing)?\b", re.I)
 URGENT = re.compile(r"\burgent\b", re.I)
 VIEWS = {"mine": "author:@me", "review": "review-requested:@me", "team": ""}
+MENTION = re.compile(r"(?<![\w/])@([A-Za-z0-9](?:[A-Za-z0-9-]{0,38}))")
+FAILED = ("FAILURE", "ERROR", "TIMED_OUT", "STARTUP_FAILURE")
+RUNNING = ("IN_PROGRESS", "QUEUED", "PENDING", "EXPECTED", "WAITING", "REQUESTED")
 
 PR_FIELDS = """
   id url number title isDraft state createdAt updatedAt mergedAt closedAt additions deletions changedFiles
-  headRefName baseRefName mergeable reviewDecision
+  headRefName baseRefName mergeable reviewDecision isCrossRepository
   author { login } mergedBy { login }
   repository { name owner { login } }
   labels(first: 10) { nodes { name } }
   comments(last: 10) { totalCount nodes { body createdAt author { login } } }
   reviewRequests(first: 10) { nodes { requestedReviewer { ... on User { login } ... on Team { slug } } } }
   latestReviews(first: 15) { nodes { author { login } state submittedAt } }
-  commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
+  reviews(first: 1) { nodes { submittedAt } }
+  reviewThreads(first: 100) { nodes { isResolved } }
+  commits(last: 1) { nodes { commit { oid committedDate statusCheckRollup { state contexts(first: 60) { nodes { __typename
+    ... on CheckRun { name status conclusion checkSuite { workflowRun { databaseId workflow { name } } } }
+    ... on StatusContext { context state } } } } } } }
 """
 
 
@@ -72,7 +79,9 @@ def status(p):
         return "merged"
     if p["draft"]:
         return "draft"
-    if p["review"] == "CHANGES_REQUESTED" or p["ci"] in ("FAILURE", "ERROR") or p["mergeable"] == "CONFLICTING":
+    # GitHub keeps CHANGES_REQUESTED until the reviewer reviews again; new commits after it hand the PR back to them
+    changes = p["review"] == "CHANGES_REQUESTED" and not p.get("fixes_pushed")
+    if changes or p["ci"] in ("FAILURE", "ERROR") or p["mergeable"] == "CONFLICTING":
         return "needs_work"
     if p["review"] == "APPROVED":
         return "approved"
@@ -99,10 +108,35 @@ def last_comment(comments):
     return {"who": (c["author"] or {}).get("login", "ghost"), "at": c["createdAt"], "text": plain(c["body"], 140)} if c else None
 
 
+def contexts(rollup):
+    """Each check on a commit as {name, state, url, run}; run is the Actions run id when it can be re-run."""
+    out = []
+    for c in (rollup["contexts"]["nodes"] if rollup else []):
+        if c["__typename"] == "CheckRun":
+            run = (c["checkSuite"] or {}).get("workflowRun") or {}
+            name = f'{run["workflow"]["name"]} / {c["name"]}' if run.get("workflow") else c["name"]
+            out.append({"name": name, "state": (c["conclusion"] or c["status"] or "").upper(), "url": safe_url(c.get("detailsUrl")),
+                        "run": run.get("databaseId")})
+        else:
+            out.append({"name": c["context"], "state": c["state"], "url": safe_url(c.get("targetUrl")), "run": None})
+    return out
+
+
+def mentions(comments):
+    """{login: {who, at, text}}: the latest comment that @mentions each person."""
+    out = {}
+    for c in comments:
+        for login in set(MENTION.findall(c["body"] or "")):
+            out[login.lower()] = {"who": (c["author"] or {}).get("login", "ghost"), "at": c["createdAt"], "text": plain(c["body"], 140)}
+    return out
+
+
 def flatten(n):
     commits = n["commits"]["nodes"]
-    rollup = commits and commits[0]["commit"]["statusCheckRollup"]
+    head = commits[0]["commit"] if commits else {}
+    rollup = head.get("statusCheckRollup")
     reviewed = {r["author"]["login"]: r["state"] for r in n["latestReviews"]["nodes"] if r["author"]}
+    asked = [r["submittedAt"] for r in n["latestReviews"]["nodes"] if r["state"] == "CHANGES_REQUESTED" and r["submittedAt"]]
     requested = [rr["requestedReviewer"] for rr in n["reviewRequests"]["nodes"] if rr["requestedReviewer"]]
     requested = [r.get("login") or r.get("slug") for r in requested]
     p = {
@@ -112,7 +146,7 @@ def flatten(n):
         "created": n["createdAt"], "updated": n["updatedAt"], "closed": n["closedAt"],
         "merged": n["mergedAt"], "merged_by": (n["mergedBy"] or {}).get("login"),
         "adds": n["additions"], "dels": n["deletions"], "files": n["changedFiles"],
-        "branch": n["headRefName"], "base": n["baseRefName"], "mergeable": n["mergeable"],
+        "branch": n["headRefName"], "base": n["baseRefName"], "mergeable": n["mergeable"], "fork": n.get("isCrossRepository", False),
         "review": n["reviewDecision"], "ci": rollup["state"] if rollup else None,
         "labels": [l["name"] for l in n["labels"]["nodes"]],
         "comments": n["comments"]["totalCount"],
@@ -122,6 +156,13 @@ def flatten(n):
         "jira": sorted(set(JIRA_KEY.findall(n["title"] + " " + n["headRefName"]))),
         "reviewers": [{"who": k, "state": v} for k, v in reviewed.items()]
         + [{"who": r, "state": "REQUESTED"} for r in requested if r not in reviewed],
+        "requested": requested,
+        "head": head.get("oid"), "pushed": head.get("committedDate"),
+        "fixes_pushed": bool(asked and head.get("committedDate") and head["committedDate"] > max(asked)),
+        "first_review": next((r["submittedAt"] for r in n["reviews"]["nodes"]), None),
+        "open_threads": sum(not t["isResolved"] for t in n["reviewThreads"]["nodes"]),
+        "mentions": mentions(n["comments"]["nodes"]),
+        "_checks": [{"name": c["name"], "state": c["state"], "run": c["run"]} for c in contexts(rollup)],
     }
     p["status"] = status(p)
     return p
@@ -154,8 +195,16 @@ def fetch(ids):
     """Full details for node ids, 25 per request, 8 requests at a time (~5s for 200 PRs)."""
     chunks = [ids[i:i + 25] for i in range(0, len(ids), 25)]
     query = f"query($ids: [ID!]!) {{ nodes(ids: $ids) {{ ... on PullRequest {{ {PR_FIELDS} }} }} }}"
+
+    def page(c):
+        try:
+            return gql(query, ids=c)["nodes"]
+        except RuntimeError as e:  # GitHub times out a heavy batch now and then (502/504): halve it and try again
+            if len(c) > 1 and any(code in str(e) for code in ("HTTP 502", "HTTP 504", "timeout", "timed out")):
+                return page(c[:len(c) // 2]) + page(c[len(c) // 2:])
+            raise
     with ThreadPoolExecutor(8) as ex:
-        pages = list(ex.map(lambda c: gql(query, ids=c)["nodes"], chunks))
+        pages = list(ex.map(page, chunks))
     return {p["url"]: p for p in (flatten(n) for page in pages for n in page if n)}
 
 
@@ -166,24 +215,21 @@ def safe_url(u):
 
 def checks(url):
     """CI checks for the head commit: name, state, link, and the Actions run id when re-runnable."""
-    q = """query($u: URI!) { resource(url: $u) { ... on PullRequest { commits(last: 1) { nodes { commit {
+    return checks_at(url)[1]
+
+
+def checks_at(url):
+    """(head commit oid, its checks), read together so they can't disagree after a push."""
+    q = """query($u: URI!) { resource(url: $u) { ... on PullRequest { commits(last: 1) { nodes { commit { oid
              statusCheckRollup { contexts(first: 100) { nodes { __typename
                ... on CheckRun { name status conclusion detailsUrl checkSuite { workflowRun { databaseId workflow { name } } } }
                ... on StatusContext { context state targetUrl } } } } } } } } } }"""
     commits = gql(q, u=url)["resource"]["commits"]["nodes"]
-    rollup = commits and commits[0]["commit"]["statusCheckRollup"]
-    out = []
-    for c in (rollup["contexts"]["nodes"] if rollup else []):
-        if c["__typename"] == "CheckRun":
-            run = (c["checkSuite"] or {}).get("workflowRun") or {}
-            state = (c["conclusion"] or c["status"] or "").upper()
-            name = f'{run["workflow"]["name"]} / {c["name"]}' if run.get("workflow") else c["name"]
-            out.append({"name": name, "state": state, "url": safe_url(c["detailsUrl"]), "run": run.get("databaseId")})
-        else:
-            out.append({"name": c["context"], "state": c["state"], "url": safe_url(c["targetUrl"]), "run": None})
+    head = commits[0]["commit"] if commits else {}
+    out = contexts(head.get("statusCheckRollup"))
     rank = {"FAILURE": 0, "ERROR": 0, "TIMED_OUT": 0, "CANCELLED": 1, "ACTION_REQUIRED": 1, "IN_PROGRESS": 2,
             "QUEUED": 2, "PENDING": 2, "EXPECTED": 2}
-    return sorted(out, key=lambda c: (rank.get(c["state"], 3), c["name"]))
+    return head.get("oid"), sorted(out, key=lambda c: (rank.get(c["state"], 3), c["name"]))
 
 
 REVIEW_WHAT = {"APPROVED": "approved", "CHANGES_REQUESTED": "requested changes", "COMMENTED": "reviewed", "DISMISSED": "review dismissed"}
@@ -194,29 +240,74 @@ def conversation(url):
     who = lambda n: (n["author"] or {}).get("login", "ghost")
     q = """query($u: URI!) { resource(url: $u) { ... on PullRequest { body createdAt author { login }
              comments(last: 100) { nodes { body createdAt url author { login } } }
-             reviews(last: 50) { nodes { state body submittedAt url author { login }
-               comments(first: 50) { nodes { body createdAt url path line originalLine author { login } } } } } } } }"""
+             reviews(last: 50) { nodes { state body submittedAt url author { login } } }
+             reviewThreads(first: 100) { nodes { id isResolved isOutdated path line originalLine
+               comments(first: 50) { nodes { body createdAt url author { login } } } } } } } }"""
     pr = gql(q, u=url)["resource"]
     out = [{"who": who(pr), "what": "opened", "at": pr["createdAt"], "text": plain(pr["body"]), "url": url}] if plain(pr["body"]) else []
     out += [{"who": who(c), "what": "commented", "at": c["createdAt"], "text": plain(c["body"]), "url": c["url"]}
             for c in pr["comments"]["nodes"]]
-    for r in pr["reviews"]["nodes"]:
-        if plain(r["body"]) or r["state"] in ("APPROVED", "CHANGES_REQUESTED"):  # bare COMMENTED reviews just hold inline comments
-            out.append({"who": who(r), "what": REVIEW_WHAT.get(r["state"], "reviewed"), "at": r["submittedAt"],
-                        "text": plain(r["body"]), "url": r["url"]})
-        out += [{"who": who(c), "what": "commented on", "at": c["createdAt"], "text": plain(c["body"]), "url": c["url"],
-                 "path": c["path"], "line": c["line"] or c["originalLine"]} for c in r["comments"]["nodes"]]
+    out += [{"who": who(r), "what": REVIEW_WHAT.get(r["state"], "reviewed"), "at": r["submittedAt"], "text": plain(r["body"]), "url": r["url"]}
+            for r in pr["reviews"]["nodes"]  # bare COMMENTED reviews only hold inline comments, which come from the threads
+            if plain(r["body"]) or r["state"] in ("APPROVED", "CHANGES_REQUESTED")]
+    for t in pr["reviewThreads"]["nodes"]:
+        cs = [{"who": who(c), "at": c["createdAt"], "text": plain(c["body"]), "url": c["url"]} for c in t["comments"]["nodes"]]
+        if cs:
+            out.append({"who": cs[0]["who"], "what": "thread", "at": cs[0]["at"], "url": cs[0]["url"], "id": t["id"],
+                        "resolved": t["isResolved"], "outdated": t["isOutdated"], "path": t["path"],
+                        "line": t["line"] or t["originalLine"], "comments": cs})
     return sorted(out, key=lambda c: c["at"] or "")
 
 
+def failed_runs(checks_):
+    return {c["run"] for c in checks_ if c["run"] and c["state"] in (*FAILED, "CANCELLED")}
+
+
+def rerun_runs(url, runs):
+    repo = "/".join(url.split("/")[3:5])
+    for run in sorted(runs):
+        gh("run", "rerun", str(run), "--failed", "-R", repo)
+
+
 def rerun_failed(url):
-    failed = {c["run"] for c in checks(url) if c["run"] and c["state"] in ("FAILURE", "TIMED_OUT", "CANCELLED", "ERROR")}
+    failed = failed_runs(checks(url))
     if not failed:
         raise ValueError("No failed GitHub Actions runs to re-run (other CI systems re-run from their own UI).")
-    repo = "/".join(url.split("/")[3:5])
-    for run in failed:
-        gh("run", "rerun", str(run), "--failed", "-R", repo)
+    rerun_runs(url, failed)
     return f"re-running {len(failed)} workflow run(s)"
+
+
+def rerequest(pr, logins):
+    """Ask these people to review again. GitHub re-notifies someone who already reviewed; a team request stays as it is."""
+    known = {r["who"] for r in pr["reviewers"]}
+    logins = [l for l in logins if l in known]
+    if not logins:
+        raise ValueError("Pick someone who's already a reviewer on this PR.")
+    gh("api", "-X", "POST", f'repos/{pr["owner"]}/{pr["repo"]}/pulls/{pr["number"]}/requested_reviewers',
+       *[a for l in logins for a in ("-f", f"reviewers[]={l}")])
+    return "re-requested review from " + ", ".join(logins)
+
+
+def _thread_of(url, thread):
+    t = gql("query($id: ID!) { node(id: $id) { ... on PullRequestReviewThread { pullRequest { url } } } }", id=thread)["node"]
+    if not t or t["pullRequest"]["url"] != url:
+        raise ValueError("That comment thread isn't on this PR.")
+
+
+def thread_reply(url, thread, body):
+    if not body.strip():
+        raise ValueError("A reply needs a body.")
+    _thread_of(url, thread)
+    gql("mutation($id: ID!, $b: String!) { addPullRequestReviewThreadReply(input: {pullRequestReviewThreadId: $id, body: $b}) { comment { id } } }",
+        id=thread, b=body)
+    return "replied"
+
+
+def thread_resolve(url, thread, resolved=True):
+    _thread_of(url, thread)
+    op = "resolveReviewThread" if resolved else "unresolveReviewThread"
+    gql(f"mutation($id: ID!) {{ {op}(input: {{threadId: $id}}) {{ thread {{ isResolved }} }} }}", id=thread)
+    return "resolved" if resolved else "reopened"
 
 
 # op -> gh args. The comment/review body is appended where an op takes one.

@@ -133,6 +133,31 @@ def agent(pr):
     return f"opened {ai.name()} in {cwd}"
 
 
+def fix(pr, conversation):
+    """Interactive AI session in the PR's worktree with every unresolved review comment loaded, to work through them."""
+    threads = [t for t in conversation if t["what"] == "thread" and not t["resolved"]]
+    asks = [c for c in conversation if c["what"] == "requested changes" and c["text"]]
+    if not threads and not asks:
+        raise ValueError("No unresolved review comments on this PR.")
+    feedback = "\n\n".join(
+        [f'{c["who"]} requested changes:\n{c["text"]}' for c in asks]
+        + [f'{t["path"]}:{t["line"] or "?"}' + ("" if not t["outdated"] else " (outdated: the code may have moved)") + "\n"
+           + "\n".join(f'  {c["who"]}: {c["text"]}' for c in t["comments"]) for t in threads])
+    if len(feedback) > 40_000:
+        feedback = feedback[:40_000] + "\n[more feedback truncated; see the PR on GitHub]"
+    cwd = Path(worktree(pr))
+    prompt = (f"You're in a worktree for {pr['url']} ({pr['title']}), on its branch. Reviewers left the feedback below. "
+              "Go through it one item at a time: make the change if it's right, or tell me why you'd push back. "
+              "Don't commit or push; I'll review your changes first. Finish with a short list of what you did for each item. "
+              f"{UNTRUSTED}\n\n===== REVIEW FEEDBACK =====\n{feedback}")
+    argv = ai.interactive(prompt, cwd, edit=True)
+    if not argv:
+        raise ValueError(f"{ai.name()} has no terminal mode. Set an interactive command in Settings → AI.")
+    launch(argv, cwd)
+    n = len(threads) + len(asks)
+    return f'opened {ai.name()} in {cwd} with {n} piece{"s" * (n != 1)} of feedback'
+
+
 # ---- headless AI review
 
 MAX_CONTEXT = 200_000  # characters of PR text + diff handed to Claude

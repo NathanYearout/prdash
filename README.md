@@ -53,7 +53,7 @@ Running `prdash` again reopens the dashboard. prdash also keeps itself current: 
 <td width="50%" valign="top">
 
 ### One board
-Draft → Needs work → In review → Approved → Merged across every org you pick. **Needs work** says why: failing CI, requested changes, or conflicts. Cards nudge you when an approved PR sits unmerged or a review goes quiet.
+Draft → Needs work → In review → Approved → Merged across every org you pick. **Needs work** says why: failing CI, requested changes, or conflicts. Push new commits after a change request and the PR goes back to In review, with a button to re-request review from the people who asked for changes (the person, not the team they were requested through). Cards nudge you when an approved PR sits unmerged or a review goes quiet. Press `g` to color open PRs by age, oldest first in each column.
 
 </td>
 <td width="50%"><img src="docs/table.png" alt="Table view of team PRs"></td>
@@ -99,7 +99,7 @@ Put **urgent** in a title (or add an `urgent` label) and the card gets a red rin
 <td valign="top">
 
 ### Notifications
-New review requests, bumps, approvals and change requests, comments (with who wrote them and what they said), CI going red or green, conflicts, merges, and finished Claude reviews. They show up in the inbox and as browser notifications, and reach your desktop when no tab is open (prdash uses `notify-send` or `terminal-notifier` if you have one). Urgent review requests stay on screen until you dismiss them.
+New review requests, bumps, approvals and change requests, comments (with who wrote them and what they said), @mentions on any PR, new commits after your change request, CI going red or green, conflicts, merges, and finished Claude reviews. They show up in the inbox and as browser notifications, and reach your desktop when no tab is open (prdash uses `notify-send` or `terminal-notifier` if you have one). Urgent review requests stay on screen until you dismiss them. Filter the inbox to mentions, delete items, mute a PR, or follow someone else's PR to get its updates like your own.
 
 </td>
 <td><img src="docs/inbox.png" alt="Inbox with review, CI, and merge events"></td>
@@ -127,7 +127,11 @@ prdash finds your GitHub login, your orgs, the folders where your clones live, y
 ### And also
 
 - **Your checkouts:** clone a repo, check out the PR branch, or create a worktree per PR, then open your editor (`code`, `nvim` in your terminal, anything) or a terminal there.
-- **Conversation:** the PR panel shows the description and every comment, review, and inline code comment with GitHub's formatting and `file:line` links, plus a box to comment, approve, or request changes.
+- **Conversation:** the PR panel shows the description and every comment and review with GitHub's formatting. Code comments are threads you can reply to and resolve right there; resolved ones fold away. `m` jumps to the comment box.
+- **Fix review comments:** on your own PR, **Fix with Claude** opens your AI in the PR's worktree with every unresolved comment loaded. It asks before changing files and never commits or pushes.
+- **Flaky checks:** prdash notices when a check fails and then passes on the same commit, and marks it flaky in the checks list. **Retry until green** re-runs the failed GitHub Actions jobs each time they fail, up to a limit you set (3 by default), and stops on success, on new commits, or when it runs out. You can have it start on its own when every failing check on your PR is a known flake.
+- **Stacked PRs:** a PR whose base is another open PR's branch shows the whole stack, and cards say what they're stacked on.
+- **Insights** (`s`): median time to first review and to merge, the PRs waiting longest for a first review, and the flakiest checks.
 - **CI:** every check on the latest commit with links, and one click to re-run the failed GitHub Actions jobs.
 - **Your own layer:** priority, tags, notes, "waiting on", snooze until a date, and hide. These stay in prdash's database and never go to GitHub.
 - **Batch actions:** select with `x` or shift-click, then rebase, approve, re-run CI, AI-review, snooze, tag, or hide them together.
@@ -148,7 +152,8 @@ Terms AND together, commas OR within a term, and a leading `-` negates. Bare wor
 | `size:>500` · `size:xl` · `files:>20` · `comments:>5` · `prio:>=2` | Numbers; sizes are xs s m l xl |
 | `ci:failing` · `review:changes` | CI: failing passing pending none · review: approved changes needed none |
 | `is:urgent` · `is:bumped` · `is:stale` · `is:mine` | Also draft, open, merged, approved, needs-work, in-review, conflict, posted, snoozed, hidden |
-| `has:jira` · `-has:note` | Also tags, waiting, review (AI), labels, reviewers |
+| `is:pushed` · `is:mentioned` · `is:retrying` | New commits since changes requested · @mentions you · retrying until green. Also following, muted |
+| `has:threads` · `threads:>2` · `has:jira` · `-has:note` | Unresolved review threads. Also tags, waiting, review (AI), labels, reviewers |
 
 ## Keyboard
 
@@ -159,7 +164,9 @@ Terms AND together, commas OR within a term, and a leading `-` negates. Bare wor
 | `j` `k` `Enter` | Move · open (walks the queue when open) | `p` `y` `O` | Announce in Slack · copy link · GitHub |
 | `x` `X` | Select · select all | `a` | Approve (press twice) |
 | `1` `2` `3` | Mine · Review requested · Team | `z` `h` | Snooze a day · hide |
-| `b` `t` | Board · table | `i` `u` `,` `r` `?` | Inbox · standup · settings · sync · help |
+| `b` `t` | Board · table | `i` `u` `s` | Inbox · standup · insights |
+| `m` | Comment on the PR | `g` | Color PRs by age |
+| `,` `r` `?` | Settings · sync · help | | |
 
 ## Settings
 
@@ -171,6 +178,7 @@ Everything is on the settings page (`,`) and stored in prdash's local database. 
 | GitHub | Orgs (default: all of yours), extra search filter, team view, merged window, sync interval, merge method, nudge age, update on start |
 | Local | Clone folders, worktree folder, terminal command, editor command |
 | AI | Provider, CLI path, review and summary models, interactive command, API URL/key/model, extra review instructions |
+| CI | Retry until green: how many re-runs, and whether to start it on its own for known-flaky checks |
 | Notifications | Browser notifications, a notify command for when no tab is open |
 | Slack | User token, channel, announcement template |
 | Jira | Site URL, email and API token, status to move tickets to on merge |

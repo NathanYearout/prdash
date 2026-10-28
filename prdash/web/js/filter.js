@@ -19,7 +19,9 @@ export const SYNTAX = [
   ["size:>500  size:xl  files:>20", "Lines changed (or xs s m l xl), files changed"],
   ["ci:failing  review:approved", "ci: failing passing pending none · review: approved changes needed none"],
   ["is:urgent  is:bumped  is:stale", "Also draft open merged approved needs-work in-review mine snoozed hidden posted conflict"],
-  ["has:jira  -has:note", "jira note tags review waiting slack labels"],
+  ["is:pushed  is:mentioned  is:retrying", "New commits since changes requested · @mentions you · retrying until green"],
+  ["is:following  is:muted", "PRs you follow for notifications, or muted"],
+  ["has:threads  threads:>2", "Unresolved review threads · has:jira note tags review waiting slack labels"],
   ["label:bug  tag:blocked  jira:ENG-4", "GitHub label, your tag, ticket key prefix"],
   ["waiting:qa  prio:>=2  comments:>5", "Your waiting-on text, priority 0-3, comment count"],
   ["-author:dependabot", "A leading - negates any term"],
@@ -78,6 +80,7 @@ const MATCH = {
   size: (p, v) => (SIZES[v.toLowerCase()] ? p.adds + p.dels >= SIZES[v.toLowerCase()][0] && p.adds + p.dels < SIZES[v.toLowerCase()][1] : num(p.adds + p.dels, v)),
   files: (p, v) => num(p.files, v),
   comments: (p, v) => num(p.comments, v),
+  threads: (p, v) => num(p.open_threads || 0, v),
   prio: (p, v, c) => (PRIO[v.toLowerCase()] !== undefined ? (c.L(p).prio || 0) === PRIO[v.toLowerCase()] : num(c.L(p).prio || 0, v)),
   ci: (p, v) => any(v, s => (CI[s] || [s.toUpperCase()]).includes(p.ci)),
   review: (p, v) => any(v, s => (s in REVIEW ? p.review === REVIEW[s] : has(p.review, s))),
@@ -91,12 +94,14 @@ const IS = {
   mine: (p, c) => p.author === c.me, stale: (p, c) => !p.merged && (c.now - new Date(p.updated)) / DAY > c.staleDays,
   snoozed: (p, c) => !!c.L(p).snooze, hidden: (p, c) => !!c.L(p).hidden, posted: (p, c) => !!c.L(p).posted,
   conflict: p => p.mergeable === "CONFLICTING", failing: p => CI.failing.includes(p.ci),
-  urgent: p => !!p.urgent, bumped: p => !!p.bump,
+  urgent: p => !!p.urgent, bumped: p => !!p.bump, pushed: p => !!p.fixes_pushed && !p.merged,
+  mentioned: (p, c) => !!c.me && !!p.mentions?.[c.me.toLowerCase()], retrying: (p, c) => !!c.L(p).retry,
+  following: (p, c) => !!c.L(p).following, muted: (p, c) => !!c.L(p).muted,
 };
 const HAS = {
   jira: p => p.jira.length > 0, note: (p, c) => !!c.L(p).note, tags: (p, c) => !!c.L(p).tags, waiting: (p, c) => !!c.L(p).waiting,
   review: (p, c) => c.reviews[p.url]?.status === "done", slack: (p, c) => !!c.L(p).posted, labels: p => p.labels.length > 0,
-  reviewers: p => p.reviewers.length > 0,
+  reviewers: p => p.reviewers.length > 0, threads: p => (p.open_threads || 0) > 0,
 };
 export const KEYS = Object.keys(MATCH).filter(k => k !== "text");
 

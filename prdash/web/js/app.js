@@ -45,11 +45,14 @@ const COLUMNS = {
   review: ["Review", p => RANK.review[p.review] ?? 3], size: ["Size", p => p.adds + p.dels],
   created: ["Age", p => p.created], updated: ["Updated", p => p.updated], note: ["Note", (p, l) => l.note || ""],
 };
-const PERSISTED = ["scope", "preset", "layout", "q", "sort", "dir", "showHidden"];
+const PERSISTED = ["scope", "preset", "layout", "q", "sort", "dir", "showHidden", "heat"];
+// age colors: an open PR's days since it opened -> 0 (fresh) to 4 (two weeks or more)
+const HEAT = [[1, "under a day"], [3, "1 to 3 days"], [7, "3 to 7 days"], [14, "1 to 2 weeks"], [Infinity, "2 weeks or more"]];
 const EVENT_ICON = {
   review_requested: "eye", review: "message-square", comment: "message-square", ci_failed: "triangle-alert", ci_passed: "check",
   merged: "git-merge", closed: "x", conflict: "triangle-alert", snooze: "clock", review_done: "sparkles", review_error: "triangle-alert",
-  jira: "ticket", jira_error: "triangle-alert", bump: "alarm-clock", urgent: "siren",
+  jira: "ticket", jira_error: "triangle-alert", bump: "alarm-clock", urgent: "siren", mention: "at-sign", pushed: "git-commit-horizontal",
+  retrying: "repeat", retry_ok: "circle-check", retry_failed: "triangle-alert",
 };
 const BUILDER = [ // filter builder rows: [key, label, options or "people"/"repos"]
   ["author", "Author", "people"], ["reviewer", "Reviewer", "people"], ["requested", "Review requested from", "people"],
@@ -59,8 +62,10 @@ const BUILDER = [ // filter builder rows: [key, label, options or "people"/"repo
   ["size", "Size", [["xs", "XS (<10 lines)"], ["s", "S (<100)"], ["m", "M (<500)"], ["l", "L (<1000)"], ["xl", "XL (1000+)"]]],
   ["ci", "CI", [["failing", "Failing"], ["pending", "Pending"], ["passing", "Passing"], ["none", "No checks"]]],
   ["review", "Review", [["needed", "Needed"], ["changes", "Changes requested"], ["approved", "Approved"], ["none", "None"]]],
-  ["is", "Is", [["urgent", "Urgent"], ["bumped", "Bumped"], ["draft", "Draft"], ["stale", "Stale"], ["conflict", "Conflicting"], ["posted", "Posted to Slack"], ["snoozed", "Snoozed"]]],
-  ["has", "Has", [["jira", "Ticket"], ["note", "Note"], ["tags", "Tags"], ["waiting", "Waiting on"], ["review", "AI review"]]],
+  ["is", "Is", [["urgent", "Urgent"], ["bumped", "Bumped"], ["pushed", "New commits since changes requested"], ["mentioned", "Mentions you"],
+                ["retrying", "Retrying until green"], ["following", "Following"], ["muted", "Muted"], ["draft", "Draft"], ["stale", "Stale"],
+                ["conflict", "Conflicting"], ["posted", "Posted to Slack"], ["snoozed", "Snoozed"]]],
+  ["has", "Has", [["threads", "Unresolved threads"], ["jira", "Ticket"], ["note", "Note"], ["tags", "Tags"], ["waiting", "Waiting on"], ["review", "AI review"]]],
 ];
 
 const CSRF = document.querySelector('meta[name="csrf"]').content;
@@ -98,8 +103,9 @@ let STORE = null, LOCAL = raw({}), LAST = null;
 const plusDays = n => new Date(Date.now() + n * DAY).toISOString().slice(0, 10);
 
 Alpine.data("prdash", () => ({
-  STATUSES, PRESETS, SCOPES, COLUMNS, SYNTAX, BUILDER, EVENT_ICON, THEMES, AI_PRESETS,
-  scope: "mine", preset: "open", layout: "board", q: "", sort: "updated", dir: -1, showHidden: false,
+  STATUSES, PRESETS, SCOPES, COLUMNS, SYNTAX, BUILDER, EVENT_ICON, THEMES, AI_PRESETS, HEAT,
+  scope: "mine", preset: "open", layout: "board", q: "", sort: "updated", dir: -1, showHidden: false, heat: false,
+  replyFor: null, replyBody: "", inboxFilter: "all", insights: null, insightsView: "mine",
   rev: 0, cfg: {}, status: { syncing: false, at: null, error: null }, now: Date.now(), sel: null, focus: null, picked: {}, detail: {}, detailFor: null,
   cbody: "", convoAll: false, armed: null, busy: {}, toastMsg: "", toastErr: false, panel: null, palQ: "", palI: 0, settings: null,
   settingsTab: "Appearance", events: [],
@@ -173,12 +179,12 @@ Alpine.data("prdash", () => ({
     });
   },
   get board() {
-    const list = this.list, { preset, scope, rev, more, q } = this;
-    return memo("board", [list, preset, scope, rev, more, q], () => {
+    const list = this.list, { preset, scope, rev, more, q, heat } = this;
+    return memo("board", [list, preset, scope, rev, more, q, heat], () => {
       const want = PRESETS[preset].statuses, groups = {}, gen = ++BOARD_GEN;
       for (const p of list) (groups[p.status] ||= []).push(p);
       // urgent first, then your priority; stable, so the chosen sort holds within each
-      const byPrio = (a, b) => (!!b.urgent - !!a.urgent) || (this.L(b).prio || 0) - (this.L(a).prio || 0);
+      const byPrio = (a, b) => (!!b.urgent - !!a.urgent) || (heat && a.created.localeCompare(b.created)) || (this.L(b).prio || 0) - (this.L(a).prio || 0);
       return STATUSES.filter(s => (!want || want.includes(s.key)) && !(s.key === "merged" && scope === "review")).map(s => {
         const all = (groups[s.key] || []).sort(byPrio);
         return { ...s, id: `${s.key}:${gen}`, total: all.length, prs: more[s.key] ? all : all.slice(0, COL_LIMIT) };
@@ -206,6 +212,45 @@ Alpine.data("prdash", () => ({
     return Object.keys(n).filter(x => x !== "ghost" && !x.endsWith("[bot]")).sort((a, b) => n[b] - n[a] || a.localeCompare(b));
   },
   get repos() { return [...new Set(Object.values(this.data?.prs || {}).map(p => p.repo))].sort(); },
+  // open PRs by "owner/repo:branch", for stacks: a PR whose base is another open PR's branch sits on top of it
+  get heads() {
+    const { rev } = this;
+    return memo("heads", [rev], () => {
+      const m = {};
+      for (const p of Object.values(this.data?.prs || {})) if (!p.merged && p.state === "OPEN" && !p.fork) m[`${p.owner}/${p.repo}:${p.branch}`] = p;
+      return m;
+    });
+  },
+  stack(p) {
+    if (!p) return [];
+    const below = [], above = [], heads = this.heads, all = Object.values(heads);
+    for (let b = heads[`${p.owner}/${p.repo}:${p.base}`]; b && below.length < 10 && b !== p; b = heads[`${b.owner}/${b.repo}:${b.base}`]) below.unshift(b);
+    const on = b => all.find(x => x.owner === b.owner && x.repo === b.repo && x.base === b.branch && x !== b);
+    for (let t = p.fork ? null : on(p); t && above.length < 10; t = on(t)) above.push(t);
+    return below.length || above.length ? [...below, p, ...above] : [];
+  },
+  // people to ask for another look: whoever reviewed without approving, on your own open PR, if not already re-asked.
+  // Individuals, never the team they were requested through.
+  rerequest(p) {
+    if (!p || p.merged || p.state !== "OPEN" || p.author !== this.data?.me) return null;
+    const asked = new Set(p.requested || []), me = this.data.me;
+    const who = p.reviewers.filter(r => r.who !== me && !asked.has(r.who) && ["CHANGES_REQUESTED", "COMMENTED", "DISMISSED"].includes(r.state)).map(r => r.who);
+    if (!who.length) return null;
+    if (p.fixes_pushed) return { who, why: `You pushed new commits after ${who.join(", ")} requested changes.` };
+    if (p.status === "in_review" && this.days(p.updated) > (this.cfg.stale_days || 5)) return { who, why: `Quiet for ${this.ago(p.updated)}.` };
+    return null;
+  },
+  heatLevel(p) {
+    if (!this.heat || p.merged || p.state !== "OPEN") return null;
+    const d = this.days(p.created);
+    return HEAT.findIndex(([max]) => d < max);
+  },
+  threads() { return (this.detail.conversation || []).filter(c => c.what === "thread"); },
+  openThreads() { return this.threads().filter(t => !t.resolved).length; },
+  canFix(p) {
+    return !!p && p.author === this.data?.me && !p.merged && this.cfg.ai_terminal &&
+      (this.openThreads() > 0 || (this.detail.conversation || []).some(c => c.what === "requested changes" && c.text));
+  },
   get pickedUrls() { return Object.keys(this.picked).filter(u => this.picked[u]); },
   get unread() { return this.data?.unread || 0; },
   L(p) { return (p && this.local?.[p.url]) || {}; },
@@ -252,18 +297,25 @@ Alpine.data("prdash", () => ({
     return `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><rect width="20" height="20" fill="hsl(${hue},45%,45%)"/><text x="10" y="14" font-size="9" font-family="sans-serif" fill="white" text-anchor="middle">${login.slice(0, 2).toUpperCase()}</text></svg>`)}`;
   },
   jiraHref(k) { return this.cfg.jira_url ? `${this.cfg.jira_url}/browse/${k}` : null; },
-  // [short, tone, icon, sentence]: why it's in Needs work, plus workflow nudges
-  flags(p) {
+  // [short, tone, icon, sentence]: why it's in Needs work, plus workflow nudges. The panel skips the ones its own sections show.
+  flags(p, panel = false) {
     const f = [], idle = this.ago(p.updated);
     if (p.urgent && !p.merged) f.push(["Urgent", "urgent", null, "Marked urgent"]);
     if (p.bump && !p.merged) f.push([`Bumped ${this.ago(p.bump.at)}`, "amber", "alarm-clock", `${p.bump.who} bumped this ${this.ago(p.bump.at)} ago`]);
     if (p.ci === "FAILURE" || p.ci === "ERROR") f.push(["CI", "red", "triangle-alert", "CI is failing"]);
-    if (p.review === "CHANGES_REQUESTED") f.push(["Changes", "red", "message-square", "Changes requested"]);
+    if (p.review === "CHANGES_REQUESTED" && !p.fixes_pushed) f.push(["Changes", "red", "message-square", "Changes requested"]);
     if (p.mergeable === "CONFLICTING") f.push(["Conflicts", "red", "triangle-alert", `Merge conflicts with ${p.base}`]);
+    if (p.fixes_pushed && !p.merged) f.push(["New commits", "amber", "git-commit-horizontal", "New commits since changes were requested: ready for another look"]);
+    if (p.open_threads && !p.merged && !panel) f.push([`${p.open_threads} open`, "muted", "message-square", `${p.open_threads} unresolved review thread${p.open_threads > 1 ? "s" : ""}`]);
+    const r = this.L(p).retry;
+    if (r && !p.merged) f.push([`Retrying ${r.attempts}/${r.max}`, "amber", "repeat", `Re-running failed jobs until CI passes (${r.attempts} of ${r.max} re-runs)`]);
+    const base = !p.merged && this.heads[`${p.owner}/${p.repo}:${p.base}`];
+    if (base && base !== p && !panel) f.push([`on #${base.number}`, "muted", "layers", `Stacked on #${base.number} ${base.title}`]);
+    if (this.L(p).muted) f.push(["Muted", "muted", "bell-off", "Muted: no inbox items for this PR"]);
     if (p.author === this.data?.me && p.status === "in_review" && !this.L(p).posted && this.days(p.created) < 3)
       f.push(["Post", "amber", "hash", "Not announced in Slack yet"]);
     if (p.status === "approved" && this.days(p.updated) > 1) f.push(["Merge?", "amber", "git-merge", `Approved but idle ${idle}: ping to merge`]);
-    if (p.status === "in_review" && this.days(p.updated) > (this.cfg.stale_days || 5)) f.push(["Quiet", "muted", "clock", `No activity for ${idle}: nudge reviewers`]);
+    if (p.status === "in_review" && this.days(p.updated) > (this.cfg.stale_days || 5) && !(panel && this.rerequest(p))) f.push(["Quiet", "muted", "clock", `No activity for ${idle}: nudge reviewers`]);
     return f;
   },
   slackText(p) {
@@ -307,28 +359,27 @@ Alpine.data("prdash", () => ({
   md,
   convoDesc() { return (this.detail.conversation || []).filter(c => c.what === "opened"); },
   convoCount() { return (this.detail.conversation || []).filter(c => c.what !== "opened").length; },
-  // the drawer's conversation: inline comments grouped into one thread per file:line; older entries tucked behind "Show N earlier"
+  // the drawer's conversation, oldest first; earlier entries tucked behind "Show N earlier", except unresolved threads
   convo() {
-    const out = [], code = {};
-    for (const c of this.detail.conversation || []) {
-      if (c.what === "opened") continue;
-      if (!c.path) { out.push({ type: "item", key: c.url + c.at, c }); continue; }
-      const k = c.path + ":" + c.line;
-      if (!code[k]) out.push(code[k] = { type: "code", key: k, path: c.path, line: c.line, url: c.url, items: [] });
-      code[k].items.push(c);
-    }
-    return this.convoAll || out.length <= 4 ? out : [{ type: "more", key: "more", n: out.length - 3 }, ...out.slice(-3)];
+    const out = (this.detail.conversation || []).filter(c => c.what !== "opened")
+      .map(c => c.what === "thread" ? { type: "thread", key: c.id, t: c } : { type: "item", key: c.url + c.at, c });
+    if (this.convoAll || out.length <= 4) return out;
+    const keep = out.filter((g, i) => i >= out.length - 3 || (g.type === "thread" && !g.t.resolved));
+    return keep.length < out.length ? [{ type: "more", key: "more", n: out.length - keep.length }, ...keep] : out;
   },
-  async act(op, p) {
+  async act(op, p, extra = {}) {
     if (["merge", "close", "approve"].includes(op) && this.armed !== op + p.url) {
       this.armed = op + p.url;
       return setTimeout(() => this.armed === op + p.url && (this.armed = null), 3000);
     }
     this.armed = null; this.busy = { ...this.busy, [op + p.url]: true };
     try {
-      const r = await api("/api/action", { url: p.url, op, body: this.cbody });
+      const r = await api("/api/action", { url: p.url, op, body: extra.body ?? this.cbody, arg: extra.arg });
       this.toast(r.out);
       if (["comment", "approve", "request_changes", "close"].includes(op)) this.cbody = "";
+      if (op === "thread_reply") { this.replyFor = null; this.replyBody = ""; }
+      if (op.startsWith("thread_") || op === "rerequest") this.loadDetail(p.url);
+      if (["retry", "retry_stop"].includes(op)) this.load();
       if (op === "review") this.load();
       if (["comment", "approve", "request_changes"].includes(op)) this.loadDetail(p.url);
       if (["slack_post", "slack_find", "worktree", "worktree_remove", "checkout", "clone"].includes(op)) { this.load(); this.loadDetail(p.url); }
@@ -336,6 +387,13 @@ Alpine.data("prdash", () => ({
     finally { const b = { ...this.busy }; delete b[op + p.url]; this.busy = b; }
   },
   isBusy(op, p) { return !!this.busy[op + p?.url]; },
+  focusComposer() {
+    const p = this.cur || this.data?.prs[this.focus];
+    if (!p) return;
+    this.sel = p.url;
+    setTimeout(() => { const el = this.$refs.composer; el?.scrollIntoView({ block: "center" }); el?.focus(); }, 250);
+  },
+  startReply(t) { this.replyFor = t.id; this.replyBody = ""; this.$nextTick(() => document.getElementById("reply-" + t.id)?.focus()); },
 
   // ---- selection + batch
   toggle(p, e) {
@@ -380,6 +438,26 @@ Alpine.data("prdash", () => ({
     try { this.events = (await api("/api/events")).events; } catch (e) { this.toast(e.message, true); }
   },
   async readAll() { await api("/api/events/read", {}); this.events = this.events.map(e => ({ ...e, read: 1 })); this.load(); },
+  get shownEvents() {
+    const f = this.inboxFilter;
+    return this.events.filter(e => f === "all" || (f === "unread" && !e.read) || (f === "mentions" && e.kind === "mention"));
+  },
+  async deleteEvents(ids) {
+    try { await api("/api/events/delete", { ids }); this.events = ids ? this.events.filter(e => !ids.includes(e.id)) : this.events.filter(e => !e.read); this.load(); }
+    catch (e) { this.toast(e.message, true); }
+  },
+  async muteFromEvent(ev) {
+    const p = this.data?.prs[ev.url];
+    if (!p) return this.toast("That PR is no longer in your views.", true);
+    await this.setLocal(p, "muted", true); this.toast(`Muted ${p.repo}#${p.number}. Unmute it from the PR panel.`);
+  },
+  // ---- insights: turnaround and flaky checks
+  async openInsights(view = this.insightsView) {
+    this.panel = "insights"; this.insightsView = view;
+    try { const r = await api(`/api/insights?view=${view}`); if (this.insightsView === view) this.insights = r; } catch (e) { this.toast(e.message, true); }
+  },
+  hours(h) { return h == null ? "—" : h < 1 ? "<1h" : h < 48 ? Math.round(h) + "h" : Math.round(h / 24) + "d"; },
+  prAt(url) { return this.data?.prs[url]; },
   openEvent(ev) {
     api("/api/events/read", { ids: [ev.id] }).then(() => this.load());
     ev.read = 1;
@@ -480,6 +558,12 @@ Alpine.data("prdash", () => ({
         ["Create / open worktree", "git-branch", () => this.act("worktree", p)], ["Check out branch in clone", "git-branch", () => this.act("checkout", p)],
         ["Announce in Slack", "hash", () => this.announce(p)], ["Approve", "check", () => this.act("approve", p)],
         ["Rebase on " + p.base, "refresh-cw", () => this.act("rebase", p)], ["Re-run failed checks", "refresh-cw", () => this.act("rerun", p)],
+        ["Comment", "message-square", () => this.focusComposer()],
+        ["Retry failed checks until green", "repeat", () => this.act("retry", p)],
+        ...(this.rerequest(p) ? [[`Re-request review from ${this.rerequest(p).who.join(", ")}`, "user-plus", () => this.act("rerequest", p, { arg: this.rerequest(p).who.join(",") })]] : []),
+        ...(p.author === this.data?.me && this.cfg.ai_terminal ? [[`Fix review comments with ${this.cfg.ai_name}`, "sparkles", () => this.act("fix", p)]] : []),
+        [this.L(p).muted ? "Unmute" : "Mute notifications", "bell-off", () => this.setLocal(p, "muted", !this.L(p).muted || null)],
+        ...(p.author !== this.data?.me ? [[this.L(p).following ? "Unfollow" : "Follow (CI, reviews, comments, merge)", "eye", () => this.setLocal(p, "following", !this.L(p).following || null)]] : []),
         ["Snooze 1 day", "clock", () => this.snooze(p, 1)], ["Snooze 1 week", "clock", () => this.snooze(p, 7)],
         ["Copy link", "link", () => this.copy(p.url)], ["Open on GitHub", "external-link", () => window.open(p.url, "_blank")],
       ].map(([t, i, f]) => ({ title: `${t} · #${p.number}`, icon: i, run: f })) : []),
@@ -488,6 +572,8 @@ Alpine.data("prdash", () => ({
       ...this.saved.map(s => ({ title: `Filter: ${s.name}`, icon: "filter", run: () => (this.q = s.q) })),
       { title: "Board view", icon: "kanban", run: () => (this.layout = "board") }, { title: "Table view", icon: "table-2", run: () => (this.layout = "table") },
       { title: "Inbox", icon: "inbox", run: () => this.openInbox() }, { title: "Standup summary", icon: "clipboard", run: () => this.openStandup() },
+      { title: "Insights: turnaround and flaky checks", icon: "chart-column", run: () => this.openInsights() },
+      { title: this.heat ? "Turn off age colors" : "Color PRs by age", icon: "thermometer", run: () => (this.heat = !this.heat) },
       { title: "Settings", icon: "settings", run: () => this.openSettings() }, { title: "Sync now", icon: "refresh-cw", run: () => this.sync() },
       { title: "Keyboard shortcuts & filter syntax", icon: "keyboard", run: () => (this.panel = "help") },
       { title: "Clear filters", icon: "x", run: () => { this.q = ""; this.preset = "open"; } },
@@ -537,7 +623,8 @@ Alpine.data("prdash", () => ({
       "/": () => this.$refs.search.focus(), "?": () => (this.panel = "help"), f: () => (this.builderOpen = !this.builderOpen),
       1: () => this.setScope("mine"), 2: () => this.setScope("review"), 3: () => this.setScope("team"),
       b: () => (this.layout = "board"), t: () => (this.layout = "table"), r: () => this.sync(),
-      i: () => this.openInbox(), ",": () => this.openSettings(), u: () => this.openStandup(),
+      i: () => this.openInbox(), ",": () => this.openSettings(), u: () => this.openStandup(), s: () => this.openInsights(),
+      g: () => (this.heat = !this.heat),
       j: () => move(1), k: () => move(-1), ArrowDown: () => move(1), ArrowUp: () => move(-1),
       X: () => this.pickAll(),
     };
@@ -545,7 +632,7 @@ Alpine.data("prdash", () => ({
       Enter: () => (this.sel = p.url), o: () => (this.sel = p.url), O: () => window.open(p.url, "_blank"),
       x: () => this.toggle(p), c: () => this.cfg.ai_terminal && this.act("agent", p), v: () => this.act("review", p), e: () => this.act("editor", p),
       w: () => this.act("worktree", p), p: () => this.announce(p), a: () => this.act("approve", p), y: () => this.copy(p.url, "Link copied"),
-      z: () => this.snooze(p, 1), h: () => this.setLocal(p, "hidden", !this.L(p).hidden),
+      z: () => this.snooze(p, 1), h: () => this.setLocal(p, "hidden", !this.L(p).hidden), m: () => this.focusComposer(),
     };
     const fn = keys[e.key] || prKeys?.[e.key];
     if (fn) { e.preventDefault(); fn(); }

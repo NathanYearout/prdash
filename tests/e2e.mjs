@@ -156,6 +156,26 @@ const moved = await js(`(async () => {
 })()`);
 check("board follows status changes from a sync", moved);
 
+await app(`(a.scope = "team", a.preset = "open", a.q = "", a.sel = null, a.panel = null)`); await sleep(200);
+check("a fork's branch never counts as a stack base", await app(`(() => {
+  const ps = Object.values(a.data.prs).filter(p => p.state === "OPEN"), f = ps[0], g = ps.find(p => p !== f && p.owner === f.owner && p.repo === f.repo);
+  if (!g) return true;
+  const was = [f.branch, f.fork]; f.branch = g.base; f.fork = true; a.rev++;
+  const ok = !a.stack(g).includes(f); [f.branch, f.fork] = was; a.rev++; return ok;
+})()`));
+await key("g"); await sleep(300);
+check("g colors open cards by age", await js(`document.querySelectorAll(".board .card.heat").length > 0 && !!document.querySelector(".heat-legend:not([style*='none'])")`));
+await key("g"); await sleep(200);
+await app(`(a.focus = a.order[0]?.url)`); await key("m");
+check("m opens the PR and focuses the comment box", await waitFor(`document.activeElement === Alpine.$data(document.body).$refs.composer`, 3000));
+await js(`document.activeElement.blur()`); await key("Escape"); await sleep(300);
+await app("a.openInbox()"); await waitFor(`Alpine.$data(document.body).events.length >= 0`); await app(`(a.inboxFilter = "mentions")`); await sleep(150);
+check("inbox mentions filter", await app(`a.shownEvents.every(e => e.kind === "mention")`));
+await app(`(a.inboxFilter = "all", a.panel = null)`);
+await key("s");
+check("s opens insights", await waitFor(`Alpine.$data(document.body).insights?.view === "mine"`, 10000));
+await shot("13b-insights"); await key("Escape");
+
 // every icon reference resolves to a symbol in the (versioned) sprite
 const missing = await js(`(async () => {
   const uses = [...document.querySelectorAll("use")].map(u => u.getAttribute("href")).filter(Boolean);

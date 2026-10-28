@@ -10,7 +10,7 @@ from urllib.parse import urlsplit
 
 from . import config, integrations
 
-# provider -> (label, headless argv builder, interactive command template)
+# provider -> (label, headless argv builder, interactive command template, editing command template)
 # Headless builders get (prompt, model, checkout or None) and return argv; PR data arrives on stdin.
 # Headless runs always start in an empty temp dir, never the checkout: a PR can ship its own .claude/.codex
 # config (hooks, MCP servers) and none of it should load. Claude may still read the checkout, read-only, via --add-dir.
@@ -21,10 +21,10 @@ CLIS = {
                                                 "--setting-sources", "user", "--strict-mcp-config",
                                                 "--disallowedTools", "Bash", "WebFetch", "WebSearch",
                                                 *(["--add-dir", checkout, "--allowedTools", f"Read(/{checkout}/**)"] if checkout else [])],
-               "{cmd} --permission-mode plan {prompt}"),
+               "{cmd} --permission-mode plan {prompt}", "{cmd} {prompt}"),
     "codex": ("Codex",
               lambda prompt, model, checkout: ["exec", "-s", "read-only", "--skip-git-repo-check", *(["-m", model] if model else []), prompt],
-              "{cmd} --sandbox read-only {prompt}"),
+              "{cmd} --sandbox read-only {prompt}", "{cmd} --sandbox workspace-write --ask-for-approval untrusted {prompt}"),
 }
 API_NAMES = {"deepseek": "DeepSeek", "x.ai": "Grok", "openai": "OpenAI", "openrouter": "OpenRouter", "11434": "Ollama",
              "groq": "Groq", "mistral": "Mistral", "together": "Together"}
@@ -47,9 +47,10 @@ def _cmd():
     return config.get("ai_cmd").strip() or provider()
 
 
-def interactive(prompt, cwd):
-    """argv for a terminal session, or None when the provider has none (plain APIs without a custom command)."""
-    template = config.get("ai_interactive_cmd").strip() or (CLIS[provider()][2] if provider() in CLIS else "")
+def interactive(prompt, cwd, edit=False):
+    """argv for a terminal session, or None when the provider has none (plain APIs without a custom command).
+    Sessions start read-only; edit=True lets the CLI change files, still asking you first in its default mode."""
+    template = config.get("ai_interactive_cmd").strip() or (CLIS[provider()][3 if edit else 2] if provider() in CLIS else "")
     if not template:
         return None
     return config.expand(config.get("terminal"), dir=cwd) + config.expand(template, cmd=_cmd(), prompt=prompt)
