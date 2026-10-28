@@ -125,6 +125,12 @@ class Inbox(unittest.TestCase):
         edited = {**new, "mentions": {"me": {"who": "alice", "at": "1", "text": "@me hi (edited)"}}}
         self.assertEqual(sync.diff({u: new}, {u: edited}, "me", set(), set()), [], "editing a comment isn't a new mention")
 
+    def test_fix_with_ai_only_on_your_prs(self):
+        from prdash import local
+        db.put("viewer", "me")
+        with self.assertRaisesRegex(ValueError, "your own PRs"):
+            local.fix(pr(author="bob"), [{"what": "thread", "resolved": False}])
+
     def test_mentions_follow_and_mute(self):
         u = NODE["url"]
         c = [{"body": "@Me can you look? cc @bob, not foo@me.com", "createdAt": "5", "author": {"login": "alice"}}]
