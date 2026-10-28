@@ -67,6 +67,25 @@ def use_login_key(key):
     return ok
 
 
+SESSION_DAYS = 30
+
+
+def new_session():
+    """Browser sessions are their own random IDs, never the master token, so a cookie that leaks to
+    another localhost port (browsers don't isolate cookies by port) can be revoked and expires."""
+    sid = secrets.token_urlsafe(24)
+    with db.LOCK:
+        sessions = {s: exp for s, exp in db.get("sessions", {}).items() if exp > time.time()}
+        sessions[sid] = time.time() + SESSION_DAYS * 86400
+        db.put("sessions", sessions)
+    return sid
+
+
+def valid_session(sid):
+    exp = db.get("sessions", {}).get(sid, 0)
+    return exp > time.time()
+
+
 LOCKED = b"""<!doctype html><meta charset="utf-8"><title>prdash</title>
 <body style="font:15px system-ui;background:#0d0f12;color:#dde1e8;display:grid;place-items:center;height:90vh;text-align:center">
 <div><h2>prdash is running</h2><p>Open it with the <code>prdash</code> command; it logs this browser in.<br>
@@ -166,18 +185,33 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
-    def authed(self):
-        """Session cookie (browsers) or X-Token header (scripts). The token itself is never served to a page:
-        other local users or processes can reach 127.0.0.1 but can't read the cookie or prdash's 0700 data dir."""
+    def session_id(self):
         jar = SimpleCookie(self.headers.get("Cookie") or "")
-        given = self.headers.get("X-Token") or (jar["prdash"].value if "prdash" in jar else "")
-        return bool(given) and secrets.compare_digest(given, token())
+        name = f"prdash{PORT}"
+        return jar[name].value if name in jar else ""
 
-    def trusted(self, path, qs):
-        # Host check blocks DNS rebinding; the session (SameSite=Strict) blocks other sites from calling the API
+    def authed(self, method="GET"):
+        """X-Token header (scripts, `prdash url`) or a browser session from prdash's own page.
+        Cookies are shared by every port on localhost and SameSite treats those ports as one site, so a valid
+        cookie alone isn't enough: the request must come from this origin, and writes need a custom header,
+        which a page on another port can't send without a CORS preflight that prdash never approves."""
+        if self.headers.get("X-Token"):
+            return secrets.compare_digest(self.headers["X-Token"], token())
+        sid = self.session_id()
+        if not sid or not valid_session(sid):
+            return False
+        if self.headers.get("Sec-Fetch-Site", "same-origin") != "same-origin":
+            return False
+        origin = self.headers.get("Origin")
+        if origin and origin not in (f"http://127.0.0.1:{PORT}", f"http://localhost:{PORT}"):
+            return False
+        return method == "GET" or self.headers.get("X-Prdash") == "1"
+
+    def trusted(self, path, qs, method):
+        # Host check blocks DNS rebinding; authed() blocks other pages, including other localhost ports
         if self.headers.get("Host") not in (f"127.0.0.1:{PORT}", f"localhost:{PORT}"):
             return False
-        return self.authed() if path.startswith("/api/") else True
+        return self.authed(method) if path.startswith("/api/") else True
 
     def body(self):
         n = int(self.headers.get("Content-Length") or 0)
@@ -192,7 +226,7 @@ class Handler(BaseHTTPRequestHandler):
     def route(self, method):
         u = urlsplit(self.path)
         path, qs = u.path, parse_qs(u.query)
-        if not self.trusted(path, qs):
+        if not self.trusted(path, qs, method):
             return self.send(403, {"error": "forbidden"})
         try:
             if method == "GET":
@@ -202,10 +236,11 @@ class Handler(BaseHTTPRequestHandler):
                             return self.send(401, LOCKED, "text/html; charset=utf-8")
                         self.send_response(303)
                         self.send_header("Location", "/")
-                        self.send_header("Set-Cookie", f"prdash={token()}; Path=/; HttpOnly; SameSite=Strict; Max-Age=31536000")
+                        self.send_header("Set-Cookie", f"prdash{PORT}={new_session()}; Path=/; HttpOnly; SameSite=Strict; "
+                                                       f"Max-Age={SESSION_DAYS * 86400}")
                         self.send_header("Content-Length", "0")
                         return self.end_headers()
-                    if not self.authed():
+                    if not valid_session(self.session_id()):
                         return self.send(401, LOCKED, "text/html; charset=utf-8")
                     return self.send(200, (WEB / "index.html").read_bytes(), "text/html; charset=utf-8")
                 if path.startswith("/static/"):

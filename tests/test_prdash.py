@@ -222,8 +222,8 @@ class Server(unittest.TestCase):
         import time
         time.sleep(0.3)
 
-    def req(self, path, token=None, host=None, body=None, cookie=None):
-        h = {"Host": host or f"127.0.0.1:{self.port}", "Content-Type": "application/json"}
+    def req(self, path, token=None, host=None, body=None, cookie=None, headers=None):
+        h = {"Host": host or f"127.0.0.1:{self.port}", "Content-Type": "application/json", **(headers or {})}
         if token:
             h["X-Token"] = token
         if cookie:
@@ -268,11 +268,18 @@ class Server(unittest.TestCase):
         self.assertIn("SameSite=Strict", cookie)
         self.assertEqual(self.req(f"/?key={key}")[0], 401, "login links work once")
         session = cookie.split(";")[0]
+        self.assertNotIn(tok, cookie, "the cookie is a session id, not the master token")
         code, body = self.req("/", cookie=session)
         self.assertEqual(code, 200)
         self.assertNotIn(tok.encode(), body, "the page never contains the token")
-        self.assertEqual(self.req("/api/events", cookie=session)[0], 200)
-        self.assertEqual(self.req("/api/events", cookie="prdash=wrong")[0], 403)
+        same = {"Sec-Fetch-Site": "same-origin", "Origin": f"http://127.0.0.1:{self.port}"}
+        self.assertEqual(self.req("/api/events", cookie=session, headers=same)[0], 200)
+        self.assertEqual(self.req("/api/events", cookie=f"prdash{self.port}=wrong")[0], 403)
+        # another localhost port gets the cookie too (browsers don't isolate ports), but that's not enough
+        self.assertEqual(self.req("/api/events", cookie=session, headers={"Sec-Fetch-Site": "same-site"})[0], 403)
+        self.assertEqual(self.req("/api/sync", cookie=session, body={}, headers={"Origin": "http://127.0.0.1:3000"})[0], 403)
+        self.assertEqual(self.req("/api/sync", cookie=session, body={}, headers=same)[0], 403, "writes need X-Prdash")
+        self.assertEqual(self.req("/api/sync", cookie=session, body={}, headers={**same, "X-Prdash": "1"})[0], 200)
 
     def test_check_links_are_http_only(self):
         self.assertIsNone(github.safe_url("javascript:alert(1)"))
