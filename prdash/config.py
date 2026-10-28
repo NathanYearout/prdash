@@ -29,6 +29,10 @@ def default_editor():
                              ("nvim", "{terminal} nvim ."), ("vim", "{terminal} vim .")], "{terminal} vi .")
 
 
+def default_ai():
+    return next((p for p in ("claude", "codex", "gemini") if shutil.which(p)), "api")
+
+
 def default_notify():
     return _first_installed([("notify-send", "notify-send --app-name=prdash prdash {text}"),
                              ("terminal-notifier", "terminal-notifier -title prdash -message {text}")], "")
@@ -51,11 +55,22 @@ FIELDS = {
                  "{dir} is replaced with the folder; the command to run is appended. e.g. kitty --directory {dir}"),
     "editor": (default_editor, "str", "Local", "Editor command",
                "e.g. code {dir}, or {terminal} nvim . to open a terminal editor."),
-    "claude_cmd": ("claude", "str", "Claude", "Claude command", "Path or name of the Claude Code CLI."),
-    "review_prompt": (DEFAULT_REVIEW_PROMPT, "text", "Claude", "Extra review instructions",
-                      "Appended to every Claude review, e.g. house style rules or a skill to use."),
-    "summary_model": ("haiku", "str", "Claude", "Standup summary model",
-                      "Model for standup summaries. A small one is plenty: haiku, sonnet, or a full model name."),
+    "ai_provider": (default_ai, "choice:claude,codex,gemini,api", "AI", "Provider",
+                    "claude, codex, or gemini use that CLI, read-only. api is any OpenAI-compatible API: DeepSeek, Grok, OpenAI, OpenRouter, Ollama."),
+    "ai_cmd": ("", "str", "AI", "CLI path", "Leave empty to use the provider's own command (claude, codex, gemini)."),
+    "ai_model": ("", "str", "AI", "Review model", "Empty uses the CLI's default (or the API model below)."),
+    "ai_fast_model": (lambda: "haiku" if get("ai_provider") == "claude" else "", "str", "AI", "Summary model",
+                      "A small, fast model for standup summaries, e.g. haiku. Empty uses the review model."),
+    "ai_interactive_cmd": ("", "str", "AI", "Interactive command",
+                           "What Open in… runs in your terminal. {cmd} is the CLI, {prompt} the PR context. Empty uses the provider's "
+                           "default; set one (e.g. aider --model deepseek/deepseek-chat --message {prompt}) to pair an API model with a terminal tool."),
+    "api_base_url": ("", "str", "AI", "API base URL",
+                     "OpenAI-compatible: https://api.deepseek.com, https://api.x.ai/v1, https://api.openai.com/v1, "
+                     "https://openrouter.ai/api/v1, http://localhost:11434/v1 (Ollama). PR text and diffs are sent here."),
+    "api_key": ("", "secret", "AI", "API key", "Not needed for a local Ollama."),
+    "api_model": ("", "str", "AI", "API model", "e.g. deepseek-chat, grok-4, gpt-5-mini, qwen3"),
+    "review_prompt": (DEFAULT_REVIEW_PROMPT, "text", "AI", "Extra review instructions",
+                      "Appended to every review, e.g. house style rules or a skill to use."),
     "notify_browser": (True, "bool", "Notifications", "Browser notifications", "While a prdash tab is open."),
     "notify_cmd": (default_notify, "str", "Notifications", "System notification command",
                    "Runs for every inbox item, even with no prdash tab open. {text} is the message. Clear it to turn off."),
@@ -71,7 +86,7 @@ FIELDS = {
                       "Status name, e.g. Done. Applies to your PRs. Empty turns it off."),
 }
 # older env var names keep working
-ENV_ALIASES = {"jira_url": "PRDASH_JIRA", "merge_method": "PRDASH_MERGE"}
+ENV_ALIASES = {"jira_url": "PRDASH_JIRA", "merge_method": "PRDASH_MERGE", "ai_cmd": "PRDASH_CLAUDE_CMD", "ai_fast_model": "PRDASH_SUMMARY_MODEL"}
 
 
 def _parse(kind, value):

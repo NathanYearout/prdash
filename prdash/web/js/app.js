@@ -46,7 +46,7 @@ const BUILDER = [ // filter builder rows: [key, label, options or "people"/"repo
   ["ci", "CI", [["failing", "Failing"], ["pending", "Pending"], ["passing", "Passing"], ["none", "No checks"]]],
   ["review", "Review", [["needed", "Needed"], ["changes", "Changes requested"], ["approved", "Approved"], ["none", "None"]]],
   ["is", "Is", [["urgent", "Urgent"], ["bumped", "Bumped"], ["draft", "Draft"], ["stale", "Stale"], ["conflict", "Conflicting"], ["posted", "Posted to Slack"], ["snoozed", "Snoozed"]]],
-  ["has", "Has", [["jira", "Ticket"], ["note", "Note"], ["tags", "Tags"], ["waiting", "Waiting on"], ["review", "Claude review"]]],
+  ["has", "Has", [["jira", "Ticket"], ["note", "Note"], ["tags", "Tags"], ["waiting", "Waiting on"], ["review", "AI review"]]],
 ];
 
 const CSRF = document.querySelector('meta[name="csrf"]').content;
@@ -373,7 +373,7 @@ Alpine.data("prdash", () => ({
     try { this.toast((await api("/api/settings/test", { what })).out); } catch (e) { this.toast(e.message, true); }
   },
   get settingsSections() { return [...new Set((this.settings?.fields || []).map(f => f.section))]; },
-  // ---- standup: what changed in a window, plus an optional Claude summary
+  // ---- standup: what changed in a window, plus an optional AI summary
   openStandup() { this.panel = "standup"; this.loadStandup(); },
   async loadStandup(window = this.standup.window) {
     Object.assign(this.standup, { window, loading: true, summary: "", view: "details" });
@@ -419,7 +419,8 @@ Alpine.data("prdash", () => ({
     const q = this.palQ.toLowerCase().trim(), words = q.split(/\s+/).filter(Boolean), p = this.cur || this.data?.prs[this.focus];
     const cmds = [
       ...(p ? [
-        ["Open in Claude", "sparkles", () => this.act("claude", p)], ["Claude review", "sparkles", () => this.act("review", p)],
+        ...(this.cfg.ai_terminal ? [[`Open in ${this.cfg.ai_name}`, "sparkles", () => this.act("agent", p)]] : []),
+        [`${this.cfg.ai_name} review`, "sparkles", () => this.act("review", p)],
         ["Open in editor", "code", () => this.act("editor", p)], ["Open terminal", "terminal", () => this.act("terminal", p)],
         ["Create / open worktree", "git-branch", () => this.act("worktree", p)], ["Check out branch in clone", "git-branch", () => this.act("checkout", p)],
         ["Announce in Slack", "hash", () => this.announce(p)], ["Approve", "check", () => this.act("approve", p)],
@@ -487,7 +488,7 @@ Alpine.data("prdash", () => ({
     };
     const prKeys = p && {
       Enter: () => (this.sel = p.url), o: () => (this.sel = p.url), O: () => window.open(p.url, "_blank"),
-      x: () => this.toggle(p), c: () => this.act("claude", p), v: () => this.act("review", p), e: () => this.act("editor", p),
+      x: () => this.toggle(p), c: () => this.cfg.ai_terminal && this.act("agent", p), v: () => this.act("review", p), e: () => this.act("editor", p),
       w: () => this.act("worktree", p), p: () => this.announce(p), a: () => this.act("approve", p), y: () => this.copy(p.url, "Link copied"),
       z: () => this.snooze(p, 1), h: () => this.setLocal(p, "hidden", !this.L(p).hidden),
     };

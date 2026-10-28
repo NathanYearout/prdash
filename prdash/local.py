@@ -3,7 +3,7 @@ import subprocess, tempfile, time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from . import config, db
+from . import ai, config, db
 from .github import gh
 
 REVIEWERS = ThreadPoolExecutor(2)  # Claude reviews running at once
@@ -116,7 +116,8 @@ def terminal(pr):
     return f"opened terminal in {cwd}"
 
 
-def claude(pr):
+def agent(pr):
+    """Interactive AI session in your terminal, in the PR's checkout, with the PR context as its first prompt."""
     cwd = work_dir(pr) or Path.home()
     note = db.local_get(pr["url"]).get("note")
     review = db.reviews().get(pr["url"], {})
@@ -125,12 +126,14 @@ def claude(pr):
               f"Don't check out the branch or change anything until I ask. {UNTRUSTED}"
               + (f"\nMy note on this PR: {note}" if note else "")
               + (f"\nAn earlier automated review said:\n{review['output']}" if review.get("output") else ""))
-    argv = config.expand(config.get("terminal"), dir=cwd) + config.expand(config.get("claude_cmd")) + ["--permission-mode", "plan", prompt]
+    argv = ai.interactive(prompt, cwd)
+    if not argv:
+        raise ValueError(f"{ai.name()} has no terminal mode. Set an interactive command in Settings → AI.")
     launch(argv, cwd)
-    return f"opened Claude in {cwd}"
+    return f"opened {ai.name()} in {cwd}"
 
 
-# ---- headless Claude review
+# ---- headless AI review
 
 MAX_CONTEXT = 200_000  # characters of PR text + diff handed to Claude
 
@@ -145,7 +148,7 @@ def review_prompt(pr, has_checkout):
     extra = config.get("review_prompt").strip()
     look = "You may open files in this checkout (read-only) for context. " if has_checkout else ""
     return (f"Review the GitHub pull request {pr['url']} ({pr['title']}). Its description, comments, and diff are provided "
-            f"on stdin. {look}{UNTRUSTED}\n"
+            f"as input. {look}{UNTRUSTED}\n"
             "Reply in plain text, under 400 words, with these sections:\n"
             "Summary: one or two sentences.\n"
             "Issues: real bugs, risks, or missing tests, most severe first, each with file:line. Say 'None found' if none.\n"
@@ -161,16 +164,9 @@ def start_review(pr, on_done):
 
 def _run_review(pr, on_done):
     checkout = work_dir(pr)
-    # dontAsk denies every tool not allowed here: no shell, no network, and file reads only inside the checkout.
-    tools = ["--allowedTools", "Read(./**)"] if checkout else []
-    argv = config.expand(config.get("claude_cmd")) + ["-p", review_prompt(pr, bool(checkout)), "--permission-mode", "dontAsk", *tools]
     try:
-        context = review_context(pr)
-        r = subprocess.run(argv, cwd=checkout or tempfile.mkdtemp(prefix="prdash-review-"), input=context,
-                           capture_output=True, text=True, timeout=900)
-        ok = r.returncode == 0 and r.stdout.strip()
-        db.review_set(pr["url"], status="done" if ok else "error", finished=time.time(),
-                      output=(r.stdout if ok else r.stderr or r.stdout or "Claude exited without output").strip())
-    except (OSError, RuntimeError, subprocess.TimeoutExpired) as e:
+        output = ai.complete(review_prompt(pr, bool(checkout) and ai.provider() in ai.CLIS), review_context(pr), checkout=checkout)
+        db.review_set(pr["url"], status="done", finished=time.time(), output=output)
+    except (OSError, RuntimeError, ValueError, subprocess.TimeoutExpired) as e:
         db.review_set(pr["url"], status="error", finished=time.time(), output=str(e))
     on_done(pr)

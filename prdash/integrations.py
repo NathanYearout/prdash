@@ -9,10 +9,10 @@ from . import config, db
 SLACK_API = os.environ.get("PRDASH_SLACK_API", "https://slack.com/api")  # overridable for tests
 
 
-def _request(url, headers, data=None, method=None):
+def _request(url, headers, data=None, method=None, timeout=20):
     req = Request(url, data=data, headers=headers, method=method)
     try:
-        with urlopen(req, timeout=20) as r:
+        with urlopen(req, timeout=timeout) as r:
             body = r.read()
     except HTTPError as e:
         raise RuntimeError(f"{e.code} from {url.split('?')[0]}: {e.read()[:200].decode(errors='replace')}") from None

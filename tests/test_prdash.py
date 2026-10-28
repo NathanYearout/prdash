@@ -341,3 +341,73 @@ class Service(unittest.TestCase):
         self.assertNotIn("xoxp-1", text, "secret settings never land in the unit file")
         self.assertEqual(os.stat(unit).st_mode & 0o777, 0o600)
         self.assertEqual(calls[-1], ("systemctl", "--user", "enable", "--now", "prdash.service"))
+
+
+class AIProviders(unittest.TestCase):
+    def setUp(self):
+        self.bin = tempfile.mkdtemp()
+
+    def tearDown(self):
+        for k in ("ai_provider", "ai_cmd", "ai_model", "ai_fast_model", "api_base_url", "api_key", "api_model", "ai_interactive_cmd"):
+            config.put(k, None)
+
+    def fake_cli(self, name, script):
+        path = os.path.join(self.bin, name)
+        with open(path, "w") as f:
+            f.write("#!/usr/bin/env python3\nimport sys, json\n" + script)
+        os.chmod(path, 0o755)
+        return path
+
+    def test_cli_argv_are_read_only(self):
+        from prdash import ai
+        claude = ai.CLIS["claude"][1]("P", "haiku", True)
+        self.assertEqual(claude[:4], ["-p", "P", "--permission-mode", "dontAsk"])
+        self.assertIn("Read(./**)", claude)
+        self.assertNotIn("Read(./**)", ai.CLIS["claude"][1]("P", "", False))
+        self.assertEqual(ai.CLIS["codex"][1]("P", "", False)[:3], ["exec", "-s", "read-only"])
+        self.assertIn("plan", ai.CLIS["gemini"][1]("P", "", False))
+
+    def test_cli_complete_passes_data_on_stdin(self):
+        from prdash import ai
+        config.put("ai_provider", "claude")
+        config.put("ai_cmd", self.fake_cli("claude", "print('got ' + str(len(sys.stdin.read())) + ' chars, model ' + sys.argv[sys.argv.index('--model') + 1])"))
+        config.put("ai_fast_model", "haiku")
+        self.assertEqual(ai.complete("summarize", "x" * 42, fast=True), "got 42 chars, model haiku")
+
+    def test_codex_reads_answer_file(self):
+        from prdash import ai
+        config.put("ai_provider", "codex")
+        config.put("ai_cmd", self.fake_cli("codex", "a = sys.argv\nopen(a[a.index('-o') + 1], 'w').write('final answer')\nprint('progress noise')"))
+        self.assertEqual(ai.complete("review", "diff"), "final answer")
+
+    def test_api_provider(self):
+        from prdash import ai
+        Stub.calls.clear()
+        Stub.ROUTES = {"/v1/chat/completions": {"choices": [{"message": {"content": "  • shipped x  "}}]}}
+        srv = ThreadingHTTPServer(("127.0.0.1", 0), Stub)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        try:
+            config.put("ai_provider", "api")
+            config.put("api_base_url", f"http://127.0.0.1:{srv.server_port}/v1/")
+            config.put("api_model", "deepseek-chat")
+            config.put("api_key", "sk-test")
+            self.assertEqual(ai.complete("summarize", "activity"), "• shipped x")
+            _, path, body, auth = Stub.calls[-1]
+            self.assertEqual(auth, "Bearer sk-test")
+            sent = json.loads(body)
+            self.assertEqual((sent["model"], sent["messages"][0]["content"], sent["messages"][1]["content"]), ("deepseek-chat", "summarize", "activity"))
+            self.assertIsNone(ai.interactive("p", "/tmp"), "plain APIs have no terminal session unless configured")
+            config.put("ai_interactive_cmd", "aider --message {prompt}")
+            self.assertEqual(ai.interactive("hi there", "/tmp")[-3:], ["aider", "--message", "hi there"])
+        finally:
+            srv.shutdown()
+
+    def test_names(self):
+        from prdash import ai
+        config.put("ai_provider", "api")
+        for url, want in (("https://api.deepseek.com", "DeepSeek"), ("https://api.x.ai/v1", "Grok"),
+                          ("http://localhost:11434/v1", "Ollama"), ("https://llm.example.com/v1", "llm.example.com")):
+            config.put("api_base_url", url)
+            self.assertEqual(ai.name(), want)
+        config.put("ai_provider", "codex")
+        self.assertEqual(ai.name(), "Codex")

@@ -6,7 +6,7 @@
 
 **A fast, local dashboard for every pull request you care about.**<br>
 Your PRs, your review queue, and your team's work on one board, with an inbox for what changed,<br>
-Claude Code reviews, and Slack and Jira wired in. Runs on your machine. No accounts, no cloud.
+AI reviews with the model you choose, and Slack and Jira wired in. Runs on your machine. No accounts, no cloud.
 
 <p>
 <img alt="Python 3.10+" src="https://img.shields.io/badge/python-3.10%2B-3776AB?logo=python&logoColor=white">
@@ -72,8 +72,8 @@ Put **urgent** in a title (or an `urgent` label) and the card burns, shakes ever
 <td><img src="docs/pr-panel.png" alt="PR panel with a Claude review, local checkout, and CI checks"></td>
 <td valign="top">
 
-### Claude Code built in
-**Open in Claude** starts a session in the right repo with the PR's description, comments, and diff loaded. **Claude review** runs in the background, read-only, and puts a summary, issues with `file:line`, and a verdict on the card. Run it on one PR or a whole selection.
+### Your AI, built in
+**Open in Claude** starts a session in the right repo with the PR's description, comments, and diff loaded. **Review** runs in the background, read-only, and puts a summary, issues with `file:line`, and a verdict on the card. Run it on one PR or a whole selection. Bring your own model: [Claude Code, Codex, Gemini CLI, or any OpenAI-compatible API](#ai-providers) like DeepSeek, Grok, OpenRouter, or a local Ollama.
 
 </td>
 </tr>
@@ -109,7 +109,7 @@ New review requests, bumps, approvals and change requests, comments, CI going re
 <td valign="top">
 
 ### Standups that write themselves
-See what actually changed **since your last workday**, **this week**, or **last week**: what shipped, what you pushed to or got reviewed, what you opened or closed, and the reviews you did. **Summarize with Claude** turns it into a few first-person bullets with a small, fast model through your Claude Code, ready to paste into the dev call.
+See what actually changed **since your last workday**, **this week**, or **last week**: what shipped, what you pushed to or got reviewed, what you opened or closed, and the reviews you did. **Summarize** turns it into a few first-person bullets with a small, fast model from your AI provider, ready to paste into the dev call.
 
 </td>
 </tr>
@@ -117,7 +117,7 @@ See what actually changed **since your last workday**, **this week**, or **last 
 <td valign="top">
 
 ### Set up in a minute
-prdash finds your GitHub login, your orgs, the folders where your clones live, your terminal and editor, and whether Claude Code is installed, and turns on notifications. Everything is editable later on the settings page.
+prdash finds your GitHub login, your orgs, the folders where your clones live, your terminal and editor, and which AI you have (Claude Code, Codex, Gemini, or an API), and turns on notifications. Everything is editable later on the settings page.
 
 </td>
 <td><img src="docs/setup.png" alt="First-run setup screen"></td>
@@ -129,7 +129,7 @@ prdash finds your GitHub login, your orgs, the folders where your clones live, y
 - **Your checkouts:** clone a repo, check out the PR branch, or create a worktree per PR, then open your editor (`code`, `nvim` in your terminal, anything) or a terminal there.
 - **CI:** every check on the latest commit with links, and one click to re-run the failed GitHub Actions jobs.
 - **Your own layer:** priority, tags, notes, "waiting on", snooze until a date, and hide. Stored locally, never sent to GitHub.
-- **Batch actions:** select with `x` or shift-click, then rebase, approve, re-run CI, Claude-review, snooze, tag, or hide them together.
+- **Batch actions:** select with `x` or shift-click, then rebase, approve, re-run CI, AI-review, snooze, tag, or hide them together.
 - **Slack:** post the announcement (`PR to fix the thing: <link>`), find it if someone posted by hand, and see thread replies and reactions on the PR.
 - **Jira:** ticket status and assignee on every card, and optionally move the ticket when your PR merges.
 - **Light and dark** themes follow your system.
@@ -147,13 +147,13 @@ Terms AND together, commas OR within a term, and a leading `-` negates. Bare wor
 | `size:>500` · `size:xl` · `files:>20` · `comments:>5` · `prio:>=2` | Numbers; sizes are xs s m l xl |
 | `ci:failing` · `review:changes` | CI: failing passing pending none · review: approved changes needed none |
 | `is:urgent` · `is:bumped` · `is:stale` · `is:mine` | Also draft, open, merged, approved, needs-work, in-review, conflict, posted, snoozed, hidden |
-| `has:jira` · `-has:note` | Also tags, waiting, review (Claude), labels, reviewers |
+| `has:jira` · `-has:note` | Also tags, waiting, review (AI), labels, reviewers |
 
 ## Keyboard
 
 | Key | | Key | |
 |---|---|---|---|
-| `Ctrl K` | Command palette | `c` `v` | Open in Claude · Claude review |
+| `Ctrl K` | Command palette | `c` `v` | Open in your AI · AI review |
 | `/` `f` | Search · filter builder | `e` `w` | Editor · worktree |
 | `j` `k` `Enter` | Move · open (walks the queue when open) | `p` `y` `O` | Announce in Slack · copy link · GitHub |
 | `x` `X` | Select · select all | `a` | Approve (press twice) |
@@ -168,17 +168,30 @@ Everything is on the settings page (`,`) and stored in prdash's local database. 
 |---|---|
 | GitHub | Orgs (default: all of yours), extra search filter, team view, merged window, sync interval, merge method, nudge age |
 | Local | Clone folders, worktree folder, terminal command, editor command |
-| Claude | CLI path, extra review instructions (house style, a skill to use) |
+| AI | Provider, CLI path, review and summary models, interactive command, API URL/key/model, extra review instructions |
 | Notifications | Browser notifications, a notify command for when no tab is open |
 | Slack | User token, channel, announcement template |
 | Jira | Site URL, email and API token, status to move tickets to on merge |
+
+## AI providers
+
+Pick one in Settings → AI. Everything prdash sends is the PR's description, comments, and diff, fetched by prdash itself.
+
+| Provider | Reviews and standup summaries | Open in… (terminal session) |
+|---|---|---|
+| **Claude Code** (`claude`) | `claude -p` in `dontAsk` mode: no shell, reads only inside the PR's checkout | `claude --permission-mode plan` |
+| **Codex CLI** (`codex`) | `codex exec --sandbox read-only` | `codex --sandbox read-only` |
+| **Gemini CLI** (`gemini`) | `gemini -p --approval-mode plan` (read-only) | `gemini --approval-mode plan -i` |
+| **OpenAI-compatible API** | One chat completion, no tools | Your own command, e.g. `aider --model deepseek/deepseek-chat --message {prompt}` |
+
+API presets: DeepSeek `https://api.deepseek.com` (`deepseek-chat`), Grok `https://api.x.ai/v1` (`grok-4`), OpenAI `https://api.openai.com/v1`, OpenRouter `https://openrouter.ai/api/v1` (hundreds of models), Ollama `http://localhost:11434/v1` (local, no key). Buttons take the provider's name ("Open in Codex", "Grok review"). PR text and diffs go to whichever provider you choose.
 
 ## How it works
 
 - **Backend:** a small Python standard-library server that talks to GitHub through `gh`, with a SQLite cache in `~/.config/prdash` (set `PRDASH_HOME` to move it).
 - **Sync:** each run finds every view's PRs with GitHub search, then fetches details in parallel batches of 25. Refreshing ~250 PRs takes 7 to 10 seconds; merged PRs are fetched once. Changes between syncs become inbox events and are pushed to open tabs over server-sent events.
 - **Frontend:** Alpine.js with no build step. Cards render as HTML strings and the PR data stays outside Alpine's reactivity, so a 200-PR board renders in a couple hundred milliseconds.
-- **Claude:** for reviews, prdash fetches the PR description, comments, and diff itself and hands them to `claude -p` as data. Claude runs in `dontAsk` mode with no shell, and may only read files inside the PR's checkout. Open in Claude starts an interactive session in plan mode. Both are told to treat PR content as untrusted.
+- **AI:** for reviews and summaries, prdash fetches the PR description, comments, and diff itself and hands them to the provider as data, with CLIs in their read-only modes (see [AI providers](#ai-providers)). Interactive sessions start read-only too. Every prompt tells the model to treat PR content as untrusted.
 - **Security:** listens only on `127.0.0.1` and checks the `Host` header. The `prdash` command opens a one-time login link that starts a 7-day browser session (an HttpOnly, SameSite=Strict cookie, never the API token). Because browsers share cookies across localhost ports, API calls must also come from prdash's own origin, and writes carry a per-session CSRF token. `prdash logout` ends every session. Actions only run on PRs in your configured orgs. Links from CI providers must be `http(s)`. Slack and Jira tokens live in an owner-only directory and are never sent to the page.
 
 ## Development

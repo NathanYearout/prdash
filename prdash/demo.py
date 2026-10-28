@@ -80,6 +80,7 @@ def seed():
     db.put("setup_done", True)
     db.put("synced_once", True)
     config.put("orgs", "acme")
+    config.put("ai_provider", "claude")  # stable labels in screenshots, even on machines without the CLI
     config.put("jira_url", "https://acme.atlassian.net")
     urls = list(prs)
     notes = {urls[0]: {"prio": 3, "waiting": "Maya", "note": "Ship before Friday's release"}, urls[3]: {"tags": "blocked, needs-qa"},

@@ -136,7 +136,7 @@
 <div class="batchbar" x-show="pickedUrls.length" x-transition>
   <b x-text="pickedUrls.length + ' selected'"></b>
   <button class="btn" @click="batch('rebase')" :disabled="!!busy.batch">Rebase</button>
-  <button class="btn" @click="batch('review')" :disabled="!!busy.batch"><svg class="ic"><use href="/static/icons.svg#sparkles"/></svg>Claude review</button>
+  <button class="btn" @click="batch('review')" :disabled="!!busy.batch"><svg class="ic"><use href="/static/icons.svg#sparkles"/></svg><span x-text="cfg.ai_name + ' review'"></span></button>
   <button class="btn go" :class="{ armed: armed === 'batchapprove' }" @click="batch('approve')" :disabled="!!busy.batch" x-text="armed === 'batchapprove' ? 'Click to confirm' : 'Approve'"></button>
   <button class="btn" @click="batch('rerun')" :disabled="!!busy.batch">Re-run CI</button>
   <button class="btn" @click="batchLocal({ snooze: new Date(Date.now() + 864e5).toISOString().slice(0, 10) })">Snooze 1d</button>
@@ -172,15 +172,15 @@
       </div>
 
       <div class="quick">
-        <button class="btn primary" @click="act('claude', pane)" title="c"><svg class="ic"><use href="/static/icons.svg#sparkles"/></svg>Open in Claude</button>
-        <button class="btn" @click="act('review', pane)" :disabled="review(pane).status === 'running'" title="v"><svg class="ic" :class="{ spin: review(pane).status === 'running' }"><use href="/static/icons.svg#sparkles"/></svg><span x-text="review(pane).status === 'running' ? 'Reviewing…' : review(pane).status ? 'Re-run Claude review' : 'Claude review'"></span></button>
+        <button class="btn primary" x-show="cfg.ai_terminal" @click="act('agent', pane)" title="c"><svg class="ic"><use href="/static/icons.svg#sparkles"/></svg><span x-text="'Open in ' + cfg.ai_name"></span></button>
+        <button class="btn" @click="act('review', pane)" :disabled="review(pane).status === 'running'" title="v"><svg class="ic" :class="{ spin: review(pane).status === 'running' }"><use href="/static/icons.svg#sparkles"/></svg><span x-text="review(pane).status === 'running' ? 'Reviewing…' : (review(pane).status ? 'Re-run ' : '') + cfg.ai_name + ' review'"></span></button>
         <button class="btn" @click="announce(pane)" x-show="!pane.merged" title="p"><svg class="ic"><use :href="'/static/icons.svg#' + (cfg.slack ? 'send' : 'hash')"/></svg><span x-text="cfg.slack ? 'Post to ' + (cfg.slack_channel || 'Slack') : 'Copy Slack post'"></span></button>
         <a class="btn" :href="pane.url + '/files'" target="_blank"><svg class="ic"><use href="/static/icons.svg#file-diff"/></svg>Files</a>
       </div>
 
-      <!-- Claude review -->
+      <!-- AI review -->
       <section x-show="review(pane).status">
-        <h4><svg class="ic"><use href="/static/icons.svg#sparkles"/></svg> Claude review <span x-text="review(pane).finished ? ago(review(pane).finished * 1000) + ' ago' : review(pane).status === 'running' ? 'running, usually under a minute' : ''"></span></h4>
+        <h4><svg class="ic"><use href="/static/icons.svg#sparkles"/></svg> <span x-text="cfg.ai_name + ' review'"></span> <span x-text="review(pane).finished ? ago(review(pane).finished * 1000) + ' ago' : review(pane).status === 'running' ? 'running, usually under a minute' : ''"></span></h4>
         <pre class="review-out" :class="{ err: review(pane).status === 'error' }" x-text="review(pane).output || 'Reading the diff…'"></pre>
       </section>
 
@@ -382,7 +382,7 @@
           </li>
           <li :class="{ done: setup.dirs.some(d => d.on) }">
             <h4>Where your clones live</h4>
-            <p class="dim small">Used for Open in editor, worktrees, and running Claude inside the right repo. Found these:</p>
+            <p class="dim small">Used for Open in editor, worktrees, and running your AI inside the right repo. Found these:</p>
             <div class="checks-grid">
               <template x-for="d in setup.dirs" :key="d.path">
                 <label class="toggle pickbox"><input type="checkbox" x-model="d.on"><span class="mono" x-text="d.path"></span><b class="dim" x-show="d.repos" x-text="d.repos + ' repos'"></b></label>
@@ -395,9 +395,9 @@
               <label>Terminal <input class="mono" x-model="setup.terminal" spellcheck="false"></label>
               <label>Editor <input class="mono" x-model="setup.editor" spellcheck="false"></label>
             </div>
-            <p class="small" :class="setup.claude ? 'dim' : 'warn'">
-              <span x-show="setup.claude">✓ Claude Code found: Open in Claude and Claude reviews are ready.</span>
-              <span x-show="!setup.claude">Claude Code isn't installed. Everything else works; install it from claude.com/claude-code to get reviews.</span>
+            <p class="small" :class="setup.ai.ready ? 'dim' : 'warn'">
+              <span x-show="setup.ai.ready" x-text="'✓ ' + setup.ai.name + ' is set up for reviews and standup summaries. Change it in Settings → AI.'"></span>
+              <span x-show="!setup.ai.ready">No AI found. Install Claude Code, Codex, or Gemini CLI, or add an OpenAI-compatible API (DeepSeek, Grok, Ollama…) in Settings → AI.</span>
             </p>
           </li>
         </ol>
@@ -445,7 +445,7 @@
         <dt><kbd>Ctrl K</kbd></dt><dd>Command palette</dd><dt><kbd>/</kbd> <kbd>f</kbd></dt><dd>Search · filter builder</dd>
         <dt><kbd>j</kbd> <kbd>k</kbd></dt><dd>Next / previous PR (walks the queue with the panel open)</dd>
         <dt><kbd>Enter</kbd></dt><dd>Open PR</dd><dt><kbd>x</kbd> <kbd>X</kbd></dt><dd>Select · select all</dd>
-        <dt><kbd>c</kbd> <kbd>v</kbd></dt><dd>Open in Claude · Claude review</dd><dt><kbd>e</kbd> <kbd>w</kbd></dt><dd>Editor · worktree</dd>
+        <dt><kbd>c</kbd> <kbd>v</kbd></dt><dd>Open in your AI · AI review</dd><dt><kbd>e</kbd> <kbd>w</kbd></dt><dd>Editor · worktree</dd>
         <dt><kbd>p</kbd> <kbd>y</kbd></dt><dd>Announce in Slack · copy link</dd><dt><kbd>a</kbd></dt><dd>Approve (press twice)</dd>
         <dt><kbd>z</kbd> <kbd>h</kbd></dt><dd>Snooze a day · hide</dd><dt><kbd>O</kbd></dt><dd>Open on GitHub</dd>
         <dt><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd></dt><dd>Mine · Review requested · Team</dd><dt><kbd>b</kbd> <kbd>t</kbd></dt><dd>Board · table</dd>
@@ -486,7 +486,7 @@
         <svg class="ic"><use href="/static/icons.svg#clipboard"/></svg>Copy</button>
       <button class="btn" @click="summarizeStandup()" :disabled="standup.loading || standup.summarizing || !standup.text">
         <svg class="ic" :class="{ spin: standup.summarizing }"><use href="/static/icons.svg#sparkles"/></svg>
-        <span x-text="standup.summarizing ? 'Writing summary…' : standup.summary ? 'Rewrite summary' : 'Summarize with Claude'"></span></button>
+        <span x-text="standup.summarizing ? 'Writing summary…' : standup.summary ? 'Rewrite summary' : 'Summarize with ' + cfg.ai_name"></span></button>
       <span class="dim small">Edit either one before copying.</span>
     </div>
   </div>

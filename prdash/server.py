@@ -6,7 +6,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
-from . import config, db, github, integrations, local, standup, sync
+from . import ai, config, db, github, integrations, local, standup, sync
 
 WEB = Path(__file__).resolve().parent / "web"
 TYPES = {".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".woff2": "font/woff2"}
@@ -17,7 +17,7 @@ DEMO = False
 OPS = {
     **{op: (lambda op: lambda pr, body: github.act(op, pr["url"], body))(op) for op in github.ACTIONS},
     "rerun": lambda pr, body: github.rerun_failed(pr["url"]),
-    "claude": lambda pr, body: local.claude(pr),
+    "agent": lambda pr, body: local.agent(pr),
     "review": lambda pr, body: start_review(pr),
     "editor": lambda pr, body: local.editor(pr),
     "terminal": lambda pr, body: local.terminal(pr),
@@ -40,7 +40,7 @@ def _review_done(pr):
     sync.broadcast({"type": "review", "url": pr["url"]})
     status = db.reviews().get(pr["url"], {}).get("status")
     db.add_events([(pr["url"], "review_done" if status == "done" else "review_error",
-                    f'Claude review {"ready" if status == "done" else "failed"}: {sync.label(pr)}')])
+                    f'{ai.name()} review {"ready" if status == "done" else "failed"}: {sync.label(pr)}')])
     sync.broadcast({"type": "inbox"})
 
 
@@ -172,11 +172,20 @@ def setup_info():
         orgs = github.gh("api", "user/orgs", "--paginate", "--jq", ".[].login").split()
     except RuntimeError:
         orgs = []
-    claude = config.expand(config.get("claude_cmd"))
+
     return {"me": github.viewer(), "orgs": orgs, "selected": github.owners(), "dirs": local.find_clone_dirs(),
             "repo_dirs": config.get("repo_dirs"), "terminal": config.get("terminal"), "editor": config.get("editor"),
             "notify_cmd": config.get("notify_cmd"),
-            "claude": bool(claude and shutil.which(claude[0]))}
+            "ai": ai_status()}
+
+
+def ai_status():
+    if ai.provider() in ai.CLIS:
+        cmd = config.expand(config.get("ai_cmd").strip() or ai.provider())
+        ready = bool(cmd and shutil.which(cmd[0]))
+    else:
+        ready = bool(config.get("api_base_url") and config.get("api_model"))
+    return {"name": ai.name(), "provider": ai.provider(), "ready": ready}
 
 
 def setup_save(b):
@@ -364,7 +373,8 @@ class Handler(BaseHTTPRequestHandler):
         return results
 
     def page_config(self):
-        return {"demo": DEMO, "setup_done": bool(db.get("setup_done")), "jira_url": config.get("jira_url").rstrip("/"), "slack": integrations.slack_ready(),
+        return {"demo": DEMO, "setup_done": bool(db.get("setup_done")), "ai_name": ai.name(),
+                "ai_terminal": ai.interactive("", "/") is not None, "jira_url": config.get("jira_url").rstrip("/"), "slack": integrations.slack_ready(),
                 "slack_channel": config.get("slack_channel"), "jira": integrations.jira_ready(),
                 "merge_method": config.get("merge_method"), "stale_days": config.get("stale_days"),
                 "merged_days": config.get("merged_days"), "team_view": config.get("team_view"),
