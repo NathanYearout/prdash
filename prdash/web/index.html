@@ -13,7 +13,7 @@
 
 <header>
   <div class="bar">
-    <h1><svg class="ic"><use href="/static/icons.svg#git-merge"/></svg><span>pr<em>dash</em></span></h1>
+    <h1><a href="/" class="home" @click.prevent="home()" title="Home: your open PRs, filters cleared"><svg class="ic"><use href="/static/icons.svg#git-merge"/></svg><span>pr<em>dash</em></span></a></h1>
     <nav class="seg">
       <template x-for="(label, k) in SCOPES" :key="k">
         <button :class="{ on: scope === k }" @click="setScope(k)" x-show="k !== 'team' || cfg.team_view">

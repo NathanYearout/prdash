@@ -130,6 +130,11 @@ await app(`a.settingsTab = "Local"`); await sleep(150); await shot("11-settings-
 await key("u"); await sleep(200); check("standup has text", (await app("a.standupText.length")) > 20); await shot("12-standup"); await key("Escape");
 await key("?"); await sleep(200); await shot("13-help"); await key("Escape");
 
+// logo goes home: clears filters, panels, and selection
+await app(`(a.scope = "team", a.q = "ci:failing", a.preset = "all", a.builderOpen = true)`); await sleep(150);
+await js(`document.querySelector("h1 .home").click()`); await sleep(200);
+check("logo returns home", await app(`a.scope === "mine" && a.q === "" && a.preset === "open" && !a.builderOpen && !a.sel`));
+
 // phone width
 await cdp("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 1, mobile: true }); await sleep(400);
 check("no sideways scroll on phones", !(await js(`document.documentElement.scrollWidth > innerWidth`)));

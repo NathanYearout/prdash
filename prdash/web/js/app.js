@@ -434,6 +434,11 @@ Alpine.data("prdash", () => ({
   openPalette() { this.palQ = ""; this.palI = 0; this.panel = "palette"; this.$nextTick(() => this.$refs.pal?.focus()); },
   runPal(i = this.palI) { const it = this.palItems[i]; if (!it) return; this.panel = null; it.run(); },
   setScope(s) { this.scope = s; this.sel = null; this.focus = null; this.more = {}; },
+  home() { // logo click: back to your open PRs with nothing filtered, selected, or open; keeps board/table choice
+    Object.assign(this, { q: "", preset: "open", panel: null, builderOpen: false, showHidden: false, picked: {} });
+    this.setScope("mine");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  },
 
   // ---- keyboard
   key(e) {
