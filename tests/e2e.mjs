@@ -141,6 +141,14 @@ await app("a.sync()"); await sleep(500);
 await waitFor(`!Alpine.$data(document.body).status.syncing`, 60000);
 console.log(`     quiet sync re-rendered: ${(await app("a.rev")) !== rev0 ? "yes (something on GitHub changed)" : "no"}`);
 
+// every icon reference resolves to a symbol in the (versioned) sprite
+const missing = await js(`(async () => {
+  const uses = [...document.querySelectorAll("use")].map(u => u.getAttribute("href")).filter(Boolean);
+  const url = uses[0].split("#")[0], sprite = await (await fetch(url)).text();
+  return [...new Set(uses.map(h => h.split("#")[1]))].filter(id => !sprite.includes('id="' + id + '"'));
+})()`);
+check("icons versioned and all present", (await js(`document.querySelector("use").getAttribute("href")`)).includes("?v=") && missing.length === 0, missing.join(", "));
+
 // logo goes home: clears filters, panels, and selection
 await app(`(a.scope = "team", a.q = "ci:failing", a.preset = "all", a.builderOpen = true)`); await sleep(150);
 await js(`document.querySelector("h1 .home").click()`); await sleep(200);

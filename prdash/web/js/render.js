@@ -2,7 +2,8 @@
 // Alpine per-element bindings cost ~10ms per card at this density; strings render 200 cards in a few ms.
 
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-const icon = (name, cls = "") => `<svg class="ic ${cls}"><use href="/static/icons.svg#${name}"/></svg>`;
+const SPRITE = document.documentElement.dataset.icons || "/static/icons.svg"; // versioned by the server
+const icon = (name, cls = "") => `<svg class="ic ${cls}"><use href="${SPRITE}#${name}"/></svg>`;
 const STATE_WORD = s => s.toLowerCase().replace("_", " ");
 
 function jiraChip(a, k) {
@@ -21,7 +22,7 @@ export function chips(a, p, { labels = false } = {}) {
     l.snooze ? `<span class="chip snz">${icon("clock")}<span>until ${esc(l.snooze)}</span></span>` : "",
     ...a.tags(p).map(t => `<span class="chip tag">${esc(t)}</span>`),
     ...(labels ? p.labels.map(x => `<span class="chip">${esc(x)}</span>`) : []),
-    ...a.flags(p).map(([short, tone, ic, long]) => `<span class="chip flag ${tone}" title="${esc(long)}">${icon(ic)}<span>${esc(short)}</span></span>`),
+    ...a.flags(p).map(([short, tone, ic, long]) => `<span class="chip flag ${tone}" title="${esc(long)}">${ic ? icon(ic) : ""}<span>${esc(short)}</span></span>`),
   ].join("");
 }
 
@@ -61,8 +62,8 @@ export function card(a, p) {
     </span>
   </div>
 </article>`;
-  // urgent cards sit in a wrapper so the flames can burn behind them
-  return urgent ? `<div class="burning"><i class="fire" aria-hidden="true"></i>${html}</div>` : html;
+  // urgent cards sit in a ring whose highlight travels around the border (see .urgent-ring in style.css)
+  return urgent ? `<div class="urgent-ring">${html}</div>` : html;
 }
 
 export function row(a, p) {

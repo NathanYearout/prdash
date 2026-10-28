@@ -35,7 +35,7 @@ const PERSISTED = ["scope", "preset", "layout", "q", "sort", "dir", "showHidden"
 const EVENT_ICON = {
   review_requested: "eye", review: "message-square", comment: "message-square", ci_failed: "triangle-alert", ci_passed: "check",
   merged: "git-merge", closed: "x", conflict: "triangle-alert", snooze: "clock", review_done: "sparkles", review_error: "triangle-alert",
-  jira: "ticket", jira_error: "triangle-alert", bump: "alarm-clock", urgent: "flame",
+  jira: "ticket", jira_error: "triangle-alert", bump: "alarm-clock", urgent: "siren",
 };
 const BUILDER = [ // filter builder rows: [key, label, options or "people"/"repos"]
   ["author", "Author", "people"], ["reviewer", "Reviewer", "people"], ["requested", "Review requested from", "people"],
@@ -237,7 +237,7 @@ Alpine.data("prdash", () => ({
   // [short, tone, icon, sentence]: why it's in Needs work, plus workflow nudges
   flags(p) {
     const f = [], idle = this.ago(p.updated);
-    if (p.urgent && !p.merged) f.push(["Urgent", "urgent", "flame", "Marked urgent"]);
+    if (p.urgent && !p.merged) f.push(["Urgent", "urgent", null, "Marked urgent"]);
     if (p.bump && !p.merged) f.push([`Bumped ${this.ago(p.bump.at)}`, "amber", "alarm-clock", `${p.bump.who} bumped this ${this.ago(p.bump.at)} ago`]);
     if (p.ci === "FAILURE" || p.ci === "ERROR") f.push(["CI", "red", "triangle-alert", "CI is failing"]);
     if (p.review === "CHANGES_REQUESTED") f.push(["Changes", "red", "message-square", "Changes requested"]);

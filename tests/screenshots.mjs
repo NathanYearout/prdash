@@ -58,12 +58,12 @@ const box = await js(`(() => {
 })()`);
 const FRAMES = new globalThis.URL("./out/gif-frames/", import.meta.url).pathname;
 rmSync(FRAMES, { recursive: true, force: true }); mkdirSync(FRAMES, { recursive: true });
-for (let i = 0, t = 0; t < 4500; i++, t += 50) {
+for (let i = 0, t = 0; t < 3200; i++, t += 40) { // one full beam lap at 25fps
   await js(`document.getAnimations().forEach(a => { a.pause(); a.currentTime = ${t}; })`);
   const r = await cdp("Page.captureScreenshot", { format: "png", clip: { ...box, scale: 1 } });
   writeFileSync(`${FRAMES}/${String(i).padStart(3, "0")}.png`, Buffer.from(r.result.data, "base64"));
 }
-execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-framerate", "20", "-i", `${FRAMES}/%03d.png`, "-vf",
+execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-framerate", "25", "-i", `${FRAMES}/%03d.png`, "-vf",
   "split[a][b];[a]palettegen=max_colors=128:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle",
   "-loop", "0", `${OUT}/urgent.gif`]);
 console.log("docs/urgent.gif");

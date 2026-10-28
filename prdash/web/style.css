@@ -144,7 +144,6 @@ a.chip.jira:hover { text-decoration: none; background: color-mix(in srgb, var(--
 .chip.flag.red { color: var(--red); background: color-mix(in srgb, var(--red) 11%, transparent); }
 .chip.flag.amber { color: var(--amber); background: color-mix(in srgb, var(--amber) 11%, transparent); }
 .chip.flag.muted { color: var(--dim); background: color-mix(in srgb, var(--dim) 10%, transparent); }
-.chip.flag.urgent { color: #fff; font-weight: 650; text-transform: uppercase; letter-spacing: .04em; }
 .chip.rv-APPROVED { color: var(--green); } .chip.rv-CHANGES_REQUESTED { color: var(--red); } .chip.rv-REQUESTED { color: var(--amber); }
 .rv-APPROVED { color: var(--green); } .rv-CHANGES_REQUESTED { color: var(--red); } .rv-REVIEW_REQUIRED { color: var(--amber); }
 .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--line-hi); flex: none; }
@@ -188,43 +187,22 @@ main { padding: 18px 24px 60px; }
 .card:hover { border-color: var(--line-hi); transform: translateY(-1px); }
 .card.sel { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
 .card.focus { outline: 2px solid color-mix(in srgb, var(--accent) 60%, transparent); outline-offset: -1px; }
-/* urgent: the card burns. Flames are blurred gradients drawn once; only transform and opacity animate,
-   so the compositor handles it without repainting. The card shakes every few seconds. */
-.burning { position: relative; isolation: isolate; animation: urgent-shake 5s ease-in-out infinite; }
-.burning .card { z-index: 1; border-color: #ff6a2b; box-shadow: 0 0 0 1px rgb(255 106 43 / .5), 0 10px 34px rgb(255 72 30 / .35);
-  background: linear-gradient(to top, rgb(255 90 30 / .14), transparent 55%), var(--card); }
-.burning .card::before { background: linear-gradient(#ffb02e, #ff4d2e); width: 4px; }
-.fire, .fire::before, .fire::after { position: absolute; pointer-events: none; will-change: transform, opacity; }
-.fire { inset: -12px -10px -6px; z-index: -1; border-radius: 18px; filter: blur(12px);
-  background: radial-gradient(70% 60% at 50% 100%, rgb(255 92 30 / 1), rgb(255 60 30 / .5) 55%, transparent 78%),
-              radial-gradient(60% 45% at 50% 0%, rgb(255 150 40 / .9), transparent 72%);
-  animation: fire-breathe 2.4s ease-in-out infinite; }
-.fire::before, .fire::after { content: ""; left: 2%; right: 2%; top: -40px; height: 64px; transform-origin: 50% 100%; filter: blur(3px); }
-.fire::before { background:
-    radial-gradient(8% 75% at 10% 100%, #ffd25e 0, #ff6a24 50%, transparent 76%),
-    radial-gradient(10% 100% at 30% 100%, #ffe08a 0, #ff5a1e 50%, transparent 76%),
-    radial-gradient(9% 85% at 50% 100%, #ffd25e 0, #ff4d1e 50%, transparent 76%),
-    radial-gradient(11% 100% at 71% 100%, #ffe08a 0, #ff5a1e 50%, transparent 76%),
-    radial-gradient(8% 70% at 91% 100%, #ffd25e 0, #ff6a24 50%, transparent 76%);
-  animation: flicker-a 1.1s ease-in-out infinite alternate; }
-.fire::after { background:
-    radial-gradient(6% 55% at 20% 100%, #fff4c2 0, #ffa43c 45%, transparent 74%),
-    radial-gradient(7% 70% at 40% 100%, #fff4c2 0, #ff9030 45%, transparent 74%),
-    radial-gradient(6% 60% at 61% 100%, #fff4c2 0, #ffa43c 45%, transparent 74%),
-    radial-gradient(7% 65% at 81% 100%, #fff4c2 0, #ff9030 45%, transparent 74%);
-  animation: flicker-b .8s ease-in-out infinite alternate; }
-@keyframes fire-breathe { 0%, 100% { opacity: .75; transform: scale(1); } 50% { opacity: 1; transform: scale(1.02, 1.05); } }
-@keyframes flicker-a { 0% { transform: scale(1, .7) translateX(0); opacity: .85; } 50% { transform: scale(1.02, 1.05) translateX(-3px); opacity: 1; } 100% { transform: scale(.98, .85) translateX(2px); opacity: .9; } }
-@keyframes flicker-b { 0% { transform: scale(1, 1) translateX(1px); opacity: .9; } 50% { transform: scale(.97, .65) translateX(3px); opacity: .7; } 100% { transform: scale(1.03, 1.1) translateX(-2px); opacity: 1; } }
-@keyframes urgent-shake {
-  0%, 86%, 100% { transform: none; }
-  88% { transform: translateX(-4px) rotate(-.8deg); } 90% { transform: translateX(4px) rotate(.8deg); }
-  92% { transform: translateX(-3px) rotate(-.4deg); } 94% { transform: translateX(3px) rotate(.4deg); } 96% { transform: translateX(-1px); }
-}
-.burning:hover, .burning:hover .fire, .burning:hover .fire::before, .burning:hover .fire::after { animation-play-state: paused; }
-.chip.flag.urgent { background: linear-gradient(90deg, #ff9a2e, #ff4d2e); }
-.tbl tr.urgent td:first-child { box-shadow: inset 3px 0 0 #ff5a2b; }
-@media (prefers-reduced-motion: reduce) { .burning, .fire, .fire::before, .fire::after { animation: none; } }
+/* urgent: a highlight travels around the card's edge over a faint red ring. The beam is a conic gradient on a
+   square layer that only rotates (compositor-only); the opaque card covers all of it except a 1.5px ring. */
+.urgent-ring { position: relative; isolation: isolate; overflow: hidden; padding: 1.5px; border-radius: calc(var(--radius) + 1.5px);
+  background: color-mix(in srgb, var(--red) 28%, var(--line));
+  box-shadow: 0 10px 32px -12px color-mix(in srgb, var(--red) 55%, transparent); }
+.urgent-ring::before { content: ""; position: absolute; z-index: -1; left: 50%; top: 50%; width: 200%; aspect-ratio: 1; will-change: transform;
+  background: conic-gradient(transparent 0 55%, color-mix(in srgb, var(--red) 35%, transparent) 72%, var(--red) 86%, #fff 90%, transparent 91%);
+  transform: translate(-50%, -50%); animation: beam 3.2s linear infinite; }
+@keyframes beam { to { transform: translate(-50%, -50%) rotate(1turn); } }
+.urgent-ring .card { border-color: transparent; box-shadow: none;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--red) 9%, var(--card)), var(--card) 55%); }
+.urgent-ring .card::before { background: var(--red); }
+.chip.flag.urgent { color: var(--red); background: color-mix(in srgb, var(--red) 13%, transparent); font-weight: 650; letter-spacing: .06em; text-transform: uppercase; font-size: 10px; }
+.chip.flag.urgent::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; box-shadow: 0 0 0 3px color-mix(in srgb, var(--red) 25%, transparent); animation: pulse 1.4s ease-in-out infinite; }
+.tbl tr.urgent td:first-child { box-shadow: inset 3px 0 0 var(--red); }
+@media (prefers-reduced-motion: reduce) { .urgent-ring::before, .chip.flag.urgent::before { animation: none; } }
 .card.picked { background: color-mix(in srgb, var(--accent) 9%, var(--card)); border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); }
 .card-top { display: flex; align-items: center; gap: 6px; }
 .card-top .num { margin: 0; }
@@ -315,7 +293,7 @@ main { padding: 18px 24px 60px; }
 .events li.unread::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); margin: 6px -4px 0 -2px; flex: none; }
 .events .ic { margin-top: 2px; }
 .k-ci_failed, .k-conflict, .k-review_error, .k-jira_error { color: var(--red); } .k-ci_passed, .k-merged { color: var(--green); }
-.k-review_requested, .k-bump { color: var(--amber); } .k-review_done { color: var(--violet); } .k-urgent { color: #ff6a2b; }
+.k-review_requested, .k-bump { color: var(--amber); } .k-review_done { color: var(--violet); } .k-urgent { color: var(--red); }
 
 /* ---- modals: settings, palette, help, standup, setup ---- */
 .modal { position: fixed; inset: 0; z-index: 12; display: grid; place-items: start center; padding: 8vh 16px 16px; overflow-y: auto; }

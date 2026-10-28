@@ -284,7 +284,10 @@ class Handler(BaseHTTPRequestHandler):
                         return self.end_headers()
                     if not valid_session(self.session_id()):
                         return self.send(401, LOCKED, "text/html; charset=utf-8")
-                    page = (WEB / "index.html").read_text().replace("__CSRF__", csrf(self.session_id()))
+                    # the sprite URL carries a content hash so browsers never show a stale icon set after an upgrade
+                    sprite = f"/static/icons.svg?v={hashlib.sha1((WEB / 'icons.svg').read_bytes()).hexdigest()[:10]}"
+                    page = ((WEB / "index.html").read_text().replace("__CSRF__", csrf(self.session_id()))
+                            .replace("/static/icons.svg#", sprite + "#").replace('<html lang="en">', f'<html lang="en" data-icons="{sprite}">'))
                     return self.send(200, page, "text/html; charset=utf-8")
                 if path.startswith("/static/"):
                     f = (WEB / path[8:]).resolve()
