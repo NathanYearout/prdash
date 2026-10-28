@@ -49,6 +49,19 @@ await reset(); await app("a.openStandup()"); await sleep(300);
 await app(`a.loadStandup("this_week")`); await sleep(600);
 await app("a.summarizeStandup()"); await sleep(600); await shot("standup");
 
+// close-ups for the feature table: one part of the PR panel or a modal, cropped from a tall viewport
+const crop = async (name, rect, pad = 1) => {
+  await cdp("Emulation.setDeviceMetricsOverride", { width: 1440, height: 2600, deviceScaleFactor: 2, mobile: false }); await sleep(900);
+  const clip = await js(`(() => { const r = (${rect})().getBoundingClientRect(); return { x: r.left - 16 * ${pad}, y: r.top - 12 * ${pad}, width: r.width + 32 * ${pad}, height: r.height + 24 * ${pad}, scale: 1 }; })()`);
+  writeFileSync(`${OUT}/${name}.png`, Buffer.from((await cdp("Page.captureScreenshot", { format: "png", clip })).result.data, "base64")); console.log("docs/" + name + ".png");
+  await cdp("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 2, mobile: false });
+};
+const section = title => `() => [...document.querySelectorAll(".drawer section")].find(s => s.querySelector("h4")?.textContent.includes("${title}"))`;
+await reset(`, a.sel = a.data.views.mine.find(u => a.data.prs[u].fixes_pushed)`); await crop("conversation", section("Conversation"));
+await reset(`, a.sel = Object.keys(a.local).find(u => a.local[u].retry)`); await crop("checks", section("Checks"));
+await reset(); await app("a.openInsights('team')"); await crop("insights", `() => document.querySelector(".insights")`, 0);
+await reset();
+
 // docs/urgent.gif: step the CSS animations frame by frame (paused Web Animations), so the GIF is smooth and exact
 await reset();
 await cdp("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });

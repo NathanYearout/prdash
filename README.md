@@ -53,7 +53,7 @@ Running `prdash` again reopens the dashboard. prdash also keeps itself current: 
 <td width="50%" valign="top">
 
 ### One board
-Draft → Needs work → In review → Approved → Merged across every org you pick. **Needs work** says why: failing CI, requested changes, or conflicts. Push new commits after a change request and the PR goes back to In review, with a button to re-request review from the people who asked for changes (the person, not the team they were requested through). Cards nudge you when an approved PR sits unmerged or a review goes quiet. Press `g` to color open PRs by age, oldest first in each column.
+Draft → Needs work → In review → Approved → Merged across every org you pick. **Needs work** says why: failing CI, requested changes, or conflicts. Push new commits after a change request and the PR goes back to In review, with a button to re-request review from the people who asked for changes (the person, not the team they were requested through). Cards nudge you when an approved PR sits unmerged or a review goes quiet.
 
 </td>
 <td width="50%"><img src="docs/table.png" alt="Table view of team PRs"></td>
@@ -74,6 +74,24 @@ Put **urgent** in a title (or add an `urgent` label) and the card gets a red rin
 
 ### AI reviews
 **Open in Claude** starts a session in the PR's repo with its description, comments, and diff loaded. **Review** runs read-only in the background and adds a summary, a list of issues with `file:line`, and a verdict to the card. You can review one PR or a whole selection. It works with [Claude Code, Codex, or any OpenAI-compatible API](#ai-providers), including DeepSeek, Grok, Gemini, OpenRouter, and a local Ollama.
+
+</td>
+</tr>
+<tr>
+<td valign="top">
+
+### Comments and threads
+The PR panel shows the description, comments, and reviews formatted the way GitHub shows them. Code comments are threads you can reply to and resolve without leaving the board, and resolved ones fold away. On your own PR, **Fix with Claude** opens your AI in the PR's worktree with every unresolved comment loaded; it asks before it changes a file and never commits or pushes. Press `m` to comment on whatever PR you're looking at.
+
+</td>
+<td><img src="docs/conversation.png" alt="PR conversation with a code comment thread, a resolved thread, and a comment box"></td>
+</tr>
+<tr>
+<td><img src="docs/checks.png" alt="Checks list with a flaky check marked and Retry until green in progress"></td>
+<td valign="top">
+
+### Flaky checks, retried until green
+When a check fails and then passes on the same commit, prdash records it as a flake and marks it in the checks list with a count. **Retry until green** re-runs the failed GitHub Actions jobs each time they fail, up to a limit you set (3 by default). It stops when CI passes, when you push new commits, when it runs out of attempts, or when you press Stop, and your inbox says how it ended. You can also have it start by itself on your PRs when every failing check is a known flake.
 
 </td>
 </tr>
@@ -116,22 +134,27 @@ Pick since your last workday, this week, or last week to see what shipped, what 
 <tr>
 <td valign="top">
 
+### Insights and PR age
+`s` shows the median time to first review and to merge for your PRs, your review queue, or the team, the PRs that have waited longest for a first review, and the checks that flake most. On the board, `g` colors open PRs from green to red by how long they've been open and puts the oldest first in each column.
+
+</td>
+<td><img src="docs/insights.png" alt="Insights panel with review and merge times, PRs waiting for review, and flaky checks"></td>
+</tr>
+<tr>
+<td><img src="docs/setup.png" alt="First-run setup screen"></td>
+<td valign="top">
+
 ### Setup
 prdash finds your GitHub login, your orgs, the folders where your clones live, your terminal and editor, and which AI you have (Claude Code, Codex, Gemini, or an API), and turns on notifications. You can change any of it later in Settings.
 
 </td>
-<td><img src="docs/setup.png" alt="First-run setup screen"></td>
 </tr>
 </table>
 
 ### And also
 
 - **Your checkouts:** clone a repo, check out the PR branch, or create a worktree per PR, then open your editor (`code`, `nvim` in your terminal, anything) or a terminal there.
-- **Conversation:** the PR panel shows the description and every comment and review with GitHub's formatting. Code comments are threads you can reply to and resolve right there; resolved ones fold away. `m` jumps to the comment box.
-- **Fix review comments:** on your own PR, **Fix with Claude** opens your AI in the PR's worktree with every unresolved comment loaded. It asks before changing files and never commits or pushes.
-- **Flaky checks:** prdash notices when a check fails and then passes on the same commit, and marks it flaky in the checks list. **Retry until green** re-runs the failed GitHub Actions jobs each time they fail, up to a limit you set (3 by default), and stops on success, on new commits, or when it runs out. You can have it start on its own when every failing check on your PR is a known flake.
 - **Stacked PRs:** a PR whose base is another open PR's branch shows the whole stack, and cards say what they're stacked on.
-- **Insights** (`s`): median time to first review and to merge, the PRs waiting longest for a first review, and the flakiest checks.
 - **CI:** every check on the latest commit with links, and one click to re-run the failed GitHub Actions jobs.
 - **Your own layer:** priority, tags, notes, "waiting on", snooze until a date, and hide. These stay in prdash's database and never go to GitHub.
 - **Batch actions:** select with `x` or shift-click, then rebase, approve, re-run CI, AI-review, snooze, tag, or hide them together.
