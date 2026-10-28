@@ -9,6 +9,20 @@ test("escapes HTML before adding any markup", () => {
   assert.ok(!md('[a](https://e.com/"onclick="x)').includes('"onclick'));
 });
 
+test("never rewrites inside markup it already produced", () => {
+  // each of these used to nest a second <a> inside the first one's href, breaking out of the attribute
+  const attacks = ["[x](https://a.com/[k])\n\n[k]: https://b.com/onmouseover=alert(1)//",
+                   "[x](https://a.com/(https://b.com/onmouseover=alert(1)//)",
+                   "`https://a.com/x` [k] https://c.com/[k]\n\n[k]: https://b.com/onfocus=alert(1)",
+                   "**[x](https://a.com/**onmouseover=alert(1)**)**"];
+  for (const a of attacks) {
+    const tags = md(a).match(/<[^>]*>/g) || [];
+    for (const t of tags) assert.match(t, /^<\/?(p|a|code|b|i|br)( href="https?:\/\/[^"<>]*" target="_blank" rel="noopener")?>$/, `${a} -> ${t}`);
+  }
+  assert.equal(md("`a*b*c` **bold [x](https://e.com)**"),
+    '<p><code>a*b*c</code> <b>bold <a href="https://e.com" target="_blank" rel="noopener">x</a></b></p>');
+});
+
 test("renders the parts PR descriptions use", () => {
   const out = md("# Description\n\nUses `two-only` on **Auto Withdraw**.\n\n- [x] Fix it\n- [ ] Test\n\n[PL-83]\n\n[PL-83]: https://jira.example.com/PL-83");
   assert.match(out, /<h5>Description<\/h5>/);

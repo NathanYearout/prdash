@@ -94,13 +94,21 @@ export function row(a, p) {
 export function md(src) {
   const refs = {};
   src = String(src ?? "").replace(/^\[([^\]]+)\]:\s*(https?:\/\/\S+)\s*$/gm, (_, k, u) => ((refs[k.toLowerCase()] = u), ""));
-  const link = (text, url) => `<a href="${url}" target="_blank" rel="noopener">${text}</a>`;
-  const inline = s => esc(s).split(/(`[^`]+`)/).map((part, i) => i % 2 ? `<code>${part.slice(1, -1)}</code>` : part
-    .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, (_, t, u) => link(t, u))
-    .replace(/\[([^\]]+)\](?!\()/g, (m, t) => refs[t.toLowerCase()] ? link(t, esc(refs[t.toLowerCase()])) : m)
-    .replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g, (_, pre, u) => pre + link(u, u))
-    .replace(/\*\*(.+?)\*\*/g, "<b>$1</b>")
-    .replace(/(^|[^\w*])\*([^*\s][^*]*?)\*(?![\w*])/g, "$1<i>$2</i>")).join(""); // * only: _ shows up inside URLs and names
+  const link = (text, url) => `<a href="${esc(url)}" target="_blank" rel="noopener">${esc(text)}</a>`;
+  // Code and links become finished HTML behind \0n\0 placeholders before anything else runs, so no later pass
+  // ever sees (and rewrites inside) markup an earlier pass produced.
+  const inline = s => {
+    const done = [], keep = html => `\0${done.push(html) - 1}\0`;
+    s = String(s).replace(/\0/g, "")
+      .replace(/`([^`]+)`/g, (_, c) => keep(`<code>${esc(c)}</code>`))
+      .replace(/\[([^\]]+)\]\((https?:\/\/[^\s()[\]]+)\)/g, (_, t, u) => keep(link(t, u)))
+      .replace(/\[([^\]]+)\](?!\()/g, (m, t) => refs[t.toLowerCase()] ? keep(link(t, refs[t.toLowerCase()])) : m)
+      .replace(/(^|[\s(])(https?:\/\/[^\s<>()[\]]+)/g, (_, pre, u) => pre + keep(link(u, u)));
+    return esc(s)
+      .replace(/\*\*(.+?)\*\*/g, "<b>$1</b>")
+      .replace(/(^|[^\w*])\*([^*\s][^*]*?)\*(?![\w*])/g, "$1<i>$2</i>") // * only: _ shows up inside URLs and names
+      .replace(/\0(\d+)\0/g, (_, i) => done[i]);
+  };
   const out = [], lines = src.split(/\r?\n/);
   for (let i = 0; i < lines.length; i++) {
     const l = lines[i];
