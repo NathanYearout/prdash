@@ -17,6 +17,9 @@ from . import config, integrations
 CLIS = {
     "claude": ("Claude",
                lambda prompt, model, checkout: ["-p", prompt, "--permission-mode", "dontAsk", *(["--model", model] if model else []),
+                                                # user settings only, no MCP servers, and no shell or web even if a rule allowed them
+                                                "--setting-sources", "user", "--strict-mcp-config",
+                                                "--disallowedTools", "Bash", "WebFetch", "WebSearch",
                                                 *(["--add-dir", checkout, "--allowedTools", f"Read(/{checkout}/**)"] if checkout else [])],
                "{cmd} --permission-mode plan {prompt}"),
     "codex": ("Codex",

@@ -364,6 +364,9 @@ class AIProviders(unittest.TestCase):
         self.assertEqual(claude[:4], ["-p", "P", "--permission-mode", "dontAsk"])
         self.assertEqual(claude[-4:], ["--add-dir", "/repo/x", "--allowedTools", "Read(//repo/x/**)"])
         self.assertNotIn("--add-dir", ai.CLIS["claude"][1]("P", "", None))
+        for flag in ("--strict-mcp-config", "WebFetch", "Bash"):
+            self.assertIn(flag, claude)
+        self.assertEqual(claude[claude.index("--setting-sources") + 1], "user")
         self.assertEqual(ai.CLIS["codex"][1]("P", "", None)[:3], ["exec", "-s", "read-only"])
 
     def test_headless_never_runs_in_the_checkout(self):
