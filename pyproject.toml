@@ -1,0 +1,22 @@
+[project]
+name = "prdash"
+version = "0.2.0"
+description = "A fast local dashboard for your GitHub pull requests: board, filters, inbox, Claude reviews, Slack and Jira."
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "Apache-2.0"}
+authors = [{name = "Nathan Yearout"}]
+dependencies = []
+
+[project.scripts]
+prdash = "prdash.__main__:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["prdash*"]
+
+[tool.setuptools.package-data]
+prdash = ["web/*", "web/**/*"]
