@@ -360,12 +360,18 @@ class AIProviders(unittest.TestCase):
 
     def test_cli_argv_are_read_only(self):
         from prdash import ai
-        claude = ai.CLIS["claude"][1]("P", "haiku", True)
+        claude = ai.CLIS["claude"][1]("P", "haiku", "/repo/x")
         self.assertEqual(claude[:4], ["-p", "P", "--permission-mode", "dontAsk"])
-        self.assertIn("Read(./**)", claude)
-        self.assertNotIn("Read(./**)", ai.CLIS["claude"][1]("P", "", False))
-        self.assertEqual(ai.CLIS["codex"][1]("P", "", False)[:3], ["exec", "-s", "read-only"])
-        self.assertIn("plan", ai.CLIS["gemini"][1]("P", "", False))
+        self.assertEqual(claude[-4:], ["--add-dir", "/repo/x", "--allowedTools", "Read(//repo/x/**)"])
+        self.assertNotIn("--add-dir", ai.CLIS["claude"][1]("P", "", None))
+        self.assertEqual(ai.CLIS["codex"][1]("P", "", None)[:3], ["exec", "-s", "read-only"])
+
+    def test_headless_never_runs_in_the_checkout(self):
+        from prdash import ai
+        repo = tempfile.mkdtemp()
+        config.put("ai_provider", "claude")
+        config.put("ai_cmd", self.fake_cli("claude", "import os; print(os.getcwd())"))
+        self.assertNotEqual(ai.complete("p", "d", checkout=repo), repo, "a PR's .claude/.gemini config must not load")
 
     def test_cli_complete_passes_data_on_stdin(self):
         from prdash import ai
@@ -411,3 +417,23 @@ class AIProviders(unittest.TestCase):
             self.assertEqual(ai.name(), want)
         config.put("ai_provider", "codex")
         self.assertEqual(ai.name(), "Codex")
+
+
+class Update(unittest.TestCase):
+    def test_fast_forward_only_when_clean(self):
+        import subprocess
+        from unittest import mock
+        from prdash import update
+        root = tempfile.mkdtemp()
+        git = lambda *a, cwd=None: subprocess.run(["git", *a], cwd=cwd, capture_output=True, text=True, check=True)
+        git("init", "-q", "-b", "main", f"{root}/origin")
+        git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "one", cwd=f"{root}/origin")
+        git("clone", "-q", f"{root}/origin", f"{root}/clone")
+        git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "two", cwd=f"{root}/origin")
+        with mock.patch.object(update, "ROOT", __import__("pathlib").Path(f"{root}/clone")):
+            open(f"{root}/clone/f.txt", "w").write("x")
+            git("add", "f.txt", cwd=f"{root}/clone")  # staged local change
+            self.assertIsNone(update.from_git(), "never pulls over local changes")
+            git("reset", "-q", "--hard", cwd=f"{root}/clone")
+            self.assertIn("updated", update.from_git())
+            self.assertIsNone(update.from_git(), "already current")

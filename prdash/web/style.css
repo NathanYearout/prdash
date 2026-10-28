@@ -1,26 +1,23 @@
 @font-face { font-family: "Inter"; src: url("/static/fonts/inter.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
 @font-face { font-family: "JetBrains Mono"; src: url("/static/fonts/jetbrains-mono.woff2") format("woff2"); font-weight: 100 800; font-display: swap; }
 
-/* ---- theme ---- */
+/* ---- theme: System follows the OS (dark below, light in the media query); data-theme picks one explicitly ---- */
 :root {
-  --bg: #0b0d10; --panel: #111419; --card: #151920; --card-hi: #1a1f27; --line: #222831; --line-hi: #2f3743;
-  --text: #e3e6eb; --muted: #9aa3b1; --dim: #6b7482;
-  --accent: #7aa2f7; --on-accent: #0b0d10; --green: #6fcf97; --red: #f2777e; --amber: #e8b456; --violet: #b39dfa;
-  --shadow: 0 1px 2px rgb(0 0 0 / .3), 0 4px 14px rgb(0 0 0 / .18);
+  --bg: #0b0d10; --panel: #111419; --card: #151920; --card-hi: #1a1f27; --line: #222831; --line-hi: #2f3743; --text: #e3e6eb; --muted: #9aa3b1; --dim: #6b7482; --accent: #7aa2f7; --on-accent: #0b0d10; --green: #6fcf97; --red: #f2777e; --amber: #e8b456; --violet: #b39dfa; --shadow: 0 1px 2px rgb(0 0 0 / .3), 0 4px 14px rgb(0 0 0 / .18); color-scheme: dark;
   --sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --mono: "JetBrains Mono", ui-monospace, monospace;
   --radius: 10px;
-  color-scheme: dark;
 }
-@media (prefers-color-scheme: light) {
-  :root {
-    --bg: #f5f6f8; --panel: #ffffff; --card: #ffffff; --card-hi: #f9fafb; --line: #e3e6eb; --line-hi: #cfd4dc;
-    --text: #161a20; --muted: #4f5866; --dim: #7a8391;
-    --accent: #3b6fe0; --on-accent: #ffffff; --green: #1f9d57; --red: #d64550; --amber: #b7791f; --violet: #7c5ce0;
-    --shadow: 0 1px 2px rgb(16 24 40 / .06), 0 4px 12px rgb(16 24 40 / .06);
-    color-scheme: light;
-  }
-}
+@media (prefers-color-scheme: light) { :root:not([data-theme]) { --bg: #f5f6f8; --panel: #ffffff; --card: #ffffff; --card-hi: #f9fafb; --line: #e3e6eb; --line-hi: #cfd4dc; --text: #161a20; --muted: #4f5866; --dim: #7a8391; --accent: #3b6fe0; --on-accent: #ffffff; --green: #1f9d57; --red: #d64550; --amber: #b7791f; --violet: #7c5ce0; --shadow: 0 1px 2px rgb(16 24 40 / .06), 0 4px 12px rgb(16 24 40 / .06); color-scheme: light; } }
+:root[data-theme="dark"] { --bg: #0b0d10; --panel: #111419; --card: #151920; --card-hi: #1a1f27; --line: #222831; --line-hi: #2f3743; --text: #e3e6eb; --muted: #9aa3b1; --dim: #6b7482; --accent: #7aa2f7; --on-accent: #0b0d10; --green: #6fcf97; --red: #f2777e; --amber: #e8b456; --violet: #b39dfa; --shadow: 0 1px 2px rgb(0 0 0 / .3), 0 4px 14px rgb(0 0 0 / .18); color-scheme: dark; }
+:root[data-theme="light"] { --bg: #f5f6f8; --panel: #ffffff; --card: #ffffff; --card-hi: #f9fafb; --line: #e3e6eb; --line-hi: #cfd4dc; --text: #161a20; --muted: #4f5866; --dim: #7a8391; --accent: #3b6fe0; --on-accent: #ffffff; --green: #1f9d57; --red: #d64550; --amber: #b7791f; --violet: #7c5ce0; --shadow: 0 1px 2px rgb(16 24 40 / .06), 0 4px 12px rgb(16 24 40 / .06); color-scheme: light; }
+:root[data-theme="nord"] { --bg: #242933; --panel: #2e3440; --card: #3b4252; --card-hi: #434c5e; --line: #434c5e; --line-hi: #4c566a; --text: #eceff4; --muted: #d8dee9; --dim: #8a93a5; --accent: #88c0d0; --on-accent: #2e3440; --green: #a3be8c; --red: #bf616a; --amber: #ebcb8b; --violet: #b48ead; --shadow: 0 1px 2px rgb(0 0 0 / .3), 0 4px 14px rgb(0 0 0 / .18); color-scheme: dark; }
+:root[data-theme="dracula"] { --bg: #1e1f29; --panel: #21222c; --card: #282a36; --card-hi: #2f3241; --line: #343746; --line-hi: #44475a; --text: #f8f8f2; --muted: #c6c8d1; --dim: #7d82a8; --accent: #bd93f9; --on-accent: #1e1f29; --green: #50fa7b; --red: #ff5555; --amber: #f1fa8c; --violet: #ff79c6; --shadow: 0 1px 2px rgb(0 0 0 / .3), 0 4px 14px rgb(0 0 0 / .18); color-scheme: dark; }
+:root[data-theme="tokyo"] { --bg: #16161e; --panel: #1a1b26; --card: #1f2335; --card-hi: #24283b; --line: #292e42; --line-hi: #3b4261; --text: #c0caf5; --muted: #a9b1d6; --dim: #565f89; --accent: #7aa2f7; --on-accent: #16161e; --green: #9ece6a; --red: #f7768e; --amber: #e0af68; --violet: #bb9af7; --shadow: 0 1px 2px rgb(0 0 0 / .3), 0 4px 14px rgb(0 0 0 / .18); color-scheme: dark; }
+:root[data-theme="catppuccin"] { --bg: #11111b; --panel: #181825; --card: #1e1e2e; --card-hi: #252537; --line: #313244; --line-hi: #45475a; --text: #cdd6f4; --muted: #bac2de; --dim: #7f849c; --accent: #89b4fa; --on-accent: #11111b; --green: #a6e3a1; --red: #f38ba8; --amber: #f9e2af; --violet: #cba6f7; --shadow: 0 1px 2px rgb(0 0 0 / .3), 0 4px 14px rgb(0 0 0 / .18); color-scheme: dark; }
+:root[data-theme="gruvbox"] { --bg: #1d2021; --panel: #282828; --card: #32302f; --card-hi: #3c3836; --line: #3c3836; --line-hi: #504945; --text: #ebdbb2; --muted: #d5c4a1; --dim: #928374; --accent: #83a598; --on-accent: #1d2021; --green: #b8bb26; --red: #fb4934; --amber: #fabd2f; --violet: #d3869b; --shadow: 0 1px 2px rgb(0 0 0 / .3), 0 4px 14px rgb(0 0 0 / .18); color-scheme: dark; }
+:root[data-theme="solarized"] { --bg: #eee8d5; --panel: #fdf6e3; --card: #fdf6e3; --card-hi: #f7f0dc; --line: #e4ddc8; --line-hi: #d6cfb8; --text: #073642; --muted: #586e75; --dim: #93a1a1; --accent: #268bd2; --on-accent: #fdf6e3; --green: #859900; --red: #dc322f; --amber: #b58900; --violet: #6c71c4; --shadow: 0 1px 2px rgb(16 24 40 / .06), 0 4px 12px rgb(16 24 40 / .06); color-scheme: light; }
+:root[data-theme="rosepine"] { --bg: #f2e9e1; --panel: #fffaf3; --card: #fffaf3; --card-hi: #faf4ed; --line: #e6dcd3; --line-hi: #d8cfc7; --text: #575279; --muted: #797593; --dim: #9893a5; --accent: #286983; --on-accent: #fffaf3; --green: #56949f; --red: #b4637a; --amber: #ea9d34; --violet: #907aa9; --shadow: 0 1px 2px rgb(16 24 40 / .06), 0 4px 12px rgb(16 24 40 / .06); color-scheme: light; }
 
 /* ---- base ---- */
 [x-cloak] { display: none !important; }
@@ -358,6 +355,15 @@ main { padding: 18px 24px 60px; }
 .tools { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 8px; }
 .tools label { display: grid; gap: 4px; font-size: 12px; color: var(--dim); }
 .tools.single { grid-template-columns: 1fr; margin-top: 10px; }
+.preset-row { margin: 10px 0; }
+.themes { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 10px; }
+.theme { display: grid; gap: 6px; padding: 6px; background: none; border: 1px solid var(--line); border-radius: 10px; color: var(--muted); cursor: pointer; font: 500 12px var(--sans); text-align: left; }
+.theme:hover { border-color: var(--line-hi); color: var(--text); }
+.theme.on { border-color: var(--accent); color: var(--text); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent); }
+.swatch { display: block; height: 54px; border-radius: 6px; padding: 9px; border: 1px solid rgb(127 127 127 / .2); }
+.swatch i { display: grid; gap: 5px; height: 100%; border-radius: 4px; padding: 7px; align-content: start; }
+.swatch b { display: block; height: 5px; border-radius: 3px; width: 70%; }
+.swatch b + b { width: 45%; }
 .setup-foot { display: flex; align-items: center; gap: 16px; justify-content: space-between; margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--line); }
 
 /* ---- phones ---- */

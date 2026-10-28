@@ -161,6 +161,9 @@ def test_integration(what):
     if what == "jira":
         me = integrations.jira("/rest/api/3/myself")
         return f'Connected as {me.get("displayName")}'
+    if what == "ai":
+        reply = ai.complete("Reply with exactly the word OK and nothing else.", "ping", fast=True, timeout=120)
+        return f"{ai.name()} answered: {reply[:80]}"
     if what == "notify":
         sync.notify([(None, "test", "prdash test notification")])
         return "Sent (if a notify command is set)"
@@ -185,7 +188,8 @@ def ai_status():
         ready = bool(cmd and shutil.which(cmd[0]))
     else:
         ready = bool(config.get("api_base_url") and config.get("api_model"))
-    return {"name": ai.name(), "provider": ai.provider(), "ready": ready}
+    return {"name": ai.name(), "provider": ai.provider(), "ready": ready, "installed": {c: bool(shutil.which(c)) for c in ai.CLIS},
+            "api_base_url": config.get("api_base_url"), "api_model": config.get("api_model"), "has_key": bool(config.get("api_key"))}
 
 
 def setup_save(b):
@@ -195,6 +199,9 @@ def setup_save(b):
             config.put(key, b[key])
     if "notify_cmd" in b:  # empty is a valid choice: no system notifications
         config.put("notify_cmd", b["notify_cmd"].strip())
+    for key in ("ai_provider", "api_base_url", "api_model", "api_key"):
+        if b.get(key):
+            config.put(key, b[key].strip())
     db.put("orgs_auto", None)
     db.put("setup_done", True)
     sync.now()
@@ -219,6 +226,11 @@ def standup_summary(text):
         from . import demo
         return demo.SUMMARY
     return standup.summarize(text[:40_000])
+
+
+def theme_attr():
+    theme = config.get("theme")
+    return f' data-theme="{theme}"' if theme in config.THEMES.split(",") and theme != "system" else ""
 
 
 def settings_data():
@@ -301,7 +313,7 @@ class Handler(BaseHTTPRequestHandler):
                     # the sprite URL carries a content hash so browsers never show a stale icon set after an upgrade
                     sprite = f"/static/icons.svg?v={hashlib.sha1((WEB / 'icons.svg').read_bytes()).hexdigest()[:10]}"
                     page = ((WEB / "index.html").read_text().replace("__CSRF__", csrf(self.session_id()))
-                            .replace("/static/icons.svg#", sprite + "#").replace('<html lang="en">', f'<html lang="en" data-icons="{sprite}">'))
+                            .replace("/static/icons.svg#", sprite + "#").replace('<html lang="en">', f'<html lang="en" data-icons="{sprite}"{theme_attr()}>'))
                     return self.send(200, page, "text/html; charset=utf-8")
                 if path.startswith("/static/"):
                     f = (WEB / path[8:]).resolve()
@@ -373,7 +385,7 @@ class Handler(BaseHTTPRequestHandler):
         return results
 
     def page_config(self):
-        return {"demo": DEMO, "setup_done": bool(db.get("setup_done")), "ai_name": ai.name(),
+        return {"demo": DEMO, "setup_done": bool(db.get("setup_done")), "ai_name": ai.name(), "theme": config.get("theme"),
                 "ai_terminal": ai.interactive("", "/") is not None, "jira_url": config.get("jira_url").rstrip("/"), "slack": integrations.slack_ready(),
                 "slack_channel": config.get("slack_channel"), "jira": integrations.jira_ready(),
                 "merge_method": config.get("merge_method"), "stale_days": config.get("stale_days"),

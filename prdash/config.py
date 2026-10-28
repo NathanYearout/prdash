@@ -30,7 +30,7 @@ def default_editor():
 
 
 def default_ai():
-    return next((p for p in ("claude", "codex", "gemini") if shutil.which(p)), "api")
+    return next((p for p in ("claude", "codex") if shutil.which(p)), "api")
 
 
 def default_notify():
@@ -39,7 +39,9 @@ def default_notify():
 
 
 # key: (default, kind, section, label, help). kind: str | text | int | bool | secret | choice:a,b
+THEMES = "system,dark,light,nord,dracula,tokyo,catppuccin,gruvbox,solarized,rosepine"
 FIELDS = {
+    "theme": ("system", "choice:" + THEMES, "Appearance", "Theme", "Saved with your settings, so it follows you to any browser."),
     "orgs": ("", "str", "GitHub", "Organizations", "Comma-separated. Leave empty to use every org you belong to."),
     "extra_query": ("", "str", "GitHub", "Extra search filter",
                     "Added to every GitHub search, e.g. -author:app/dependabot -label:wip"),
@@ -55,9 +57,9 @@ FIELDS = {
                  "{dir} is replaced with the folder; the command to run is appended. e.g. kitty --directory {dir}"),
     "editor": (default_editor, "str", "Local", "Editor command",
                "e.g. code {dir}, or {terminal} nvim . to open a terminal editor."),
-    "ai_provider": (default_ai, "choice:claude,codex,gemini,api", "AI", "Provider",
-                    "claude, codex, or gemini use that CLI, read-only. api is any OpenAI-compatible API: DeepSeek, Grok, OpenAI, OpenRouter, Ollama."),
-    "ai_cmd": ("", "str", "AI", "CLI path", "Leave empty to use the provider's own command (claude, codex, gemini)."),
+    "ai_provider": (default_ai, "choice:claude,codex,api", "AI", "Provider",
+                    "claude or codex use that CLI, locked down. api is any OpenAI-compatible API: DeepSeek, Grok, OpenAI, Gemini, OpenRouter, Ollama."),
+    "ai_cmd": ("", "str", "AI", "CLI path", "Leave empty to use the provider's own command (claude or codex)."),
     "ai_model": ("", "str", "AI", "Review model", "Empty uses the CLI's default (or the API model below)."),
     "ai_fast_model": (lambda: "haiku" if get("ai_provider") == "claude" else "", "str", "AI", "Summary model",
                       "A small, fast model for standup summaries, e.g. haiku. Empty uses the review model."),
@@ -66,11 +68,14 @@ FIELDS = {
                            "default; set one (e.g. aider --model deepseek/deepseek-chat --message {prompt}) to pair an API model with a terminal tool."),
     "api_base_url": ("", "str", "AI", "API base URL",
                      "OpenAI-compatible: https://api.deepseek.com, https://api.x.ai/v1, https://api.openai.com/v1, "
-                     "https://openrouter.ai/api/v1, http://localhost:11434/v1 (Ollama). PR text and diffs are sent here."),
+                     "https://generativelanguage.googleapis.com/v1beta/openai, https://openrouter.ai/api/v1, "
+                     "http://localhost:11434/v1 (Ollama). PR text and diffs are sent here."),
     "api_key": ("", "secret", "AI", "API key", "Not needed for a local Ollama."),
     "api_model": ("", "str", "AI", "API model", "e.g. deepseek-chat, grok-4, gpt-5-mini, qwen3"),
     "review_prompt": (DEFAULT_REVIEW_PROMPT, "text", "AI", "Extra review instructions",
                       "Appended to every review, e.g. house style rules or a skill to use."),
+    "auto_update": (True, "bool", "GitHub", "Update on start",
+                    "Pull the latest prdash when it starts (skipped if your checkout has local changes)."),
     "notify_browser": (True, "bool", "Notifications", "Browser notifications", "While a prdash tab is open."),
     "notify_cmd": (default_notify, "str", "Notifications", "System notification command",
                    "Runs for every inbox item, even with no prdash tab open. {text} is the message. Clear it to turn off."),

@@ -44,7 +44,7 @@ prdash --demo                 # look around with a fictional org first; nothing 
 prdash service install        # start at login (systemd on Linux, launchd on macOS), then `prdash` just opens it
 ```
 
-Running `prdash` while it's already running just reopens the dashboard. For another browser, `prdash url` prints a one-time login link.
+Running `prdash` while it's already running just reopens the dashboard. On start it updates itself: a git checkout fast-forwards (never over local changes) and restarts on the new code, and a pipx install upgrades in the background once a day. `--no-update` or Settings turns that off. For another browser, `prdash url` prints a one-time login link.
 
 ## Features
 
@@ -73,7 +73,7 @@ Put **urgent** in a title (or an `urgent` label) and the card burns, shakes ever
 <td valign="top">
 
 ### Your AI, built in
-**Open in Claude** starts a session in the right repo with the PR's description, comments, and diff loaded. **Review** runs in the background, read-only, and puts a summary, issues with `file:line`, and a verdict on the card. Run it on one PR or a whole selection. Bring your own model: [Claude Code, Codex, Gemini CLI, or any OpenAI-compatible API](#ai-providers) like DeepSeek, Grok, OpenRouter, or a local Ollama.
+**Open in Claude** starts a session in the right repo with the PR's description, comments, and diff loaded. **Review** runs in the background, read-only, and puts a summary, issues with `file:line`, and a verdict on the card. Run it on one PR or a whole selection. Bring your own model: [Claude Code, Codex, or any OpenAI-compatible API](#ai-providers) like DeepSeek, Grok, Gemini, OpenRouter, or a local Ollama.
 
 </td>
 </tr>
@@ -132,7 +132,7 @@ prdash finds your GitHub login, your orgs, the folders where your clones live, y
 - **Batch actions:** select with `x` or shift-click, then rebase, approve, re-run CI, AI-review, snooze, tag, or hide them together.
 - **Slack:** post the announcement (`PR to fix the thing: <link>`), find it if someone posted by hand, and see thread replies and reactions on the PR.
 - **Jira:** ticket status and assignee on every card, and optionally move the ticket when your PR merges.
-- **Light and dark** themes follow your system.
+- **Ten themes** (Nord, Dracula, Tokyo Night, Catppuccin, Gruvbox, Solarized, and more), or follow your system's light/dark setting.
 
 ## Filter syntax
 
@@ -166,7 +166,8 @@ Everything is on the settings page (`,`) and stored in prdash's local database. 
 
 | Section | Options |
 |---|---|
-| GitHub | Orgs (default: all of yours), extra search filter, team view, merged window, sync interval, merge method, nudge age |
+| Appearance | Ten themes: System, Midnight, Daylight, Nord, Dracula, Tokyo Night, Catppuccin, Gruvbox, Solarized, Rosé Pine Dawn |
+| GitHub | Orgs (default: all of yours), extra search filter, team view, merged window, sync interval, merge method, nudge age, update on start |
 | Local | Clone folders, worktree folder, terminal command, editor command |
 | AI | Provider, CLI path, review and summary models, interactive command, API URL/key/model, extra review instructions |
 | Notifications | Browser notifications, a notify command for when no tab is open |
@@ -179,12 +180,11 @@ Pick one in Settings → AI. Everything prdash sends is the PR's description, co
 
 | Provider | Reviews and standup summaries | Open in… (terminal session) |
 |---|---|---|
-| **Claude Code** (`claude`) | `claude -p` in `dontAsk` mode: no shell, reads only inside the PR's checkout | `claude --permission-mode plan` |
-| **Codex CLI** (`codex`) | `codex exec --sandbox read-only` | `codex --sandbox read-only` |
-| **Gemini CLI** (`gemini`) | `gemini -p --approval-mode plan` (read-only) | `gemini --approval-mode plan -i` |
+| **Claude Code** (`claude`) | `claude -p` in `dontAsk` mode from an empty folder: no shell, reads only the PR's checkout | `claude --permission-mode plan` |
+| **Codex CLI** (`codex`) | `codex exec --sandbox read-only` from an empty folder (no network) | `codex --sandbox read-only` |
 | **OpenAI-compatible API** | One chat completion, no tools | Your own command, e.g. `aider --model deepseek/deepseek-chat --message {prompt}` |
 
-API presets: DeepSeek `https://api.deepseek.com` (`deepseek-chat`), Grok `https://api.x.ai/v1` (`grok-4`), OpenAI `https://api.openai.com/v1`, OpenRouter `https://openrouter.ai/api/v1` (hundreds of models), Ollama `http://localhost:11434/v1` (local, no key). Buttons take the provider's name ("Open in Codex", "Grok review"). PR text and diffs go to whichever provider you choose.
+Pick one on the setup screen or in Settings → AI, then hit **Test**. API presets: DeepSeek `https://api.deepseek.com` (`deepseek-chat`), Grok `https://api.x.ai/v1` (`grok-4`), OpenAI `https://api.openai.com/v1`, Gemini `https://generativelanguage.googleapis.com/v1beta/openai` (`gemini-2.5-flash`), OpenRouter `https://openrouter.ai/api/v1` (hundreds of models), Ollama `http://localhost:11434/v1` (local, no key). Buttons take the provider's name ("Open in Codex", "Grok review"). PR text and diffs go to whichever provider you choose. Headless runs never start inside a PR's checkout, so a PR can't ship its own agent config, hooks, or MCP servers into your review. Gemini CLI isn't offered for headless runs because its read-only mode still allows web fetches; use Gemini through the API instead.
 
 ## How it works
 

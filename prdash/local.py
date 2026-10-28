@@ -144,9 +144,9 @@ def review_context(pr):
     return text if len(text) <= MAX_CONTEXT else text[:MAX_CONTEXT] + "\n[diff truncated]"
 
 
-def review_prompt(pr, has_checkout):
+def review_prompt(pr, checkout=None):
     extra = config.get("review_prompt").strip()
-    look = "You may open files in this checkout (read-only) for context. " if has_checkout else ""
+    look = f"The repository is checked out at {checkout}; you may read files there for context. " if checkout else ""
     return (f"Review the GitHub pull request {pr['url']} ({pr['title']}). Its description, comments, and diff are provided "
             f"as input. {look}{UNTRUSTED}\n"
             "Reply in plain text, under 400 words, with these sections:\n"
@@ -165,7 +165,7 @@ def start_review(pr, on_done):
 def _run_review(pr, on_done):
     checkout = work_dir(pr)
     try:
-        output = ai.complete(review_prompt(pr, bool(checkout) and ai.provider() in ai.CLIS), review_context(pr), checkout=checkout)
+        output = ai.complete(review_prompt(pr, checkout if ai.provider() == "claude" else None), review_context(pr), checkout=checkout)
         db.review_set(pr["url"], status="done", finished=time.time(), output=output)
     except (OSError, RuntimeError, ValueError, subprocess.TimeoutExpired) as e:
         db.review_set(pr["url"], status="error", finished=time.time(), output=str(e))

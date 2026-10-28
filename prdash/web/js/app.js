@@ -19,6 +19,20 @@ const PRESETS = {
   all: { label: "All", statuses: null },
 };
 const SCOPES = { mine: "Mine", review: "Review requested", team: "Team" };
+// Swatch previews for the theme picker: [label, background, card, accent, text]. Full palettes live in style.css.
+const THEMES = {
+  system: ["System", "linear-gradient(135deg, #0b0d10 50%, #f5f6f8 50%)", "#151920", "#7aa2f7", "#e3e6eb"],
+  dark: ["Midnight", "#0b0d10", "#151920", "#7aa2f7", "#e3e6eb"], light: ["Daylight", "#f5f6f8", "#ffffff", "#3b6fe0", "#161a20"],
+  nord: ["Nord", "#242933", "#3b4252", "#88c0d0", "#eceff4"], dracula: ["Dracula", "#1e1f29", "#282a36", "#bd93f9", "#f8f8f2"],
+  tokyo: ["Tokyo Night", "#16161e", "#1f2335", "#7aa2f7", "#c0caf5"], catppuccin: ["Catppuccin", "#11111b", "#1e1e2e", "#89b4fa", "#cdd6f4"],
+  gruvbox: ["Gruvbox", "#1d2021", "#32302f", "#83a598", "#ebdbb2"], solarized: ["Solarized", "#eee8d5", "#fdf6e3", "#268bd2", "#073642"],
+  rosepine: ["Rosé Pine Dawn", "#f2e9e1", "#fffaf3", "#286983", "#575279"],
+};
+const AI_PRESETS = {
+  DeepSeek: ["https://api.deepseek.com", "deepseek-chat"], Grok: ["https://api.x.ai/v1", "grok-4"],
+  OpenAI: ["https://api.openai.com/v1", "gpt-5-mini"], Gemini: ["https://generativelanguage.googleapis.com/v1beta/openai", "gemini-2.5-flash"],
+  OpenRouter: ["https://openrouter.ai/api/v1", "deepseek/deepseek-chat"], Ollama: ["http://localhost:11434/v1", ""],
+};
 const RANK = {
   ci: { FAILURE: 0, ERROR: 0, PENDING: 1, EXPECTED: 1, SUCCESS: 2 },
   review: { CHANGES_REQUESTED: 0, REVIEW_REQUIRED: 1, APPROVED: 2 },
@@ -80,11 +94,11 @@ let STORE = null, LOCAL = raw({}), LAST = null;
 const plusDays = n => new Date(Date.now() + n * DAY).toISOString().slice(0, 10);
 
 Alpine.data("prdash", () => ({
-  STATUSES, PRESETS, SCOPES, COLUMNS, SYNTAX, BUILDER, EVENT_ICON,
+  STATUSES, PRESETS, SCOPES, COLUMNS, SYNTAX, BUILDER, EVENT_ICON, THEMES, AI_PRESETS,
   scope: "mine", preset: "open", layout: "board", q: "", sort: "updated", dir: -1, showHidden: false,
   rev: 0, cfg: {}, status: { syncing: false, at: null, error: null }, now: Date.now(), sel: null, focus: null, picked: {}, detail: {}, detailFor: null,
   cbody: "", armed: null, busy: {}, toastMsg: "", toastErr: false, panel: null, palQ: "", palI: 0, settings: null,
-  settingsTab: "GitHub", events: [],
+  settingsTab: "Appearance", events: [],
   standup: { window: "yesterday", text: "", summary: "", view: "details", loading: false, summarizing: false }, builderOpen: false, saved: [], more: {}, setup: null,
   notifyPermission: "Notification" in window ? Notification.permission : "unsupported", naming: null, tagging: null, lastPicked: null,
 
@@ -366,8 +380,13 @@ Alpine.data("prdash", () => ({
     try { this.settings = await api("/api/settings"); } catch (e) { this.toast(e.message, true); }
   },
   async saveSetting(key, value) {
+    if (key === "theme") this.applyTheme(value);
     try { this.settings = await api("/api/settings", { [key]: value }); this.toast("Saved"); this.load(); }
     catch (e) { this.toast(e.message, true); }
+  },
+  applyTheme(theme) {
+    if (!theme || theme === "system") delete document.documentElement.dataset.theme;
+    else document.documentElement.dataset.theme = theme;
   },
   async testSetting(what) {
     try { this.toast((await api("/api/settings/test", { what })).out); } catch (e) { this.toast(e.message, true); }
@@ -402,14 +421,30 @@ Alpine.data("prdash", () => ({
       s.dirs = [...s.dirs, ...current.filter(c => !known.has(c)).map(path => ({ path, repos: null }))]
         .map((d, i) => ({ ...d, on: current.includes(d.path) || (!current.some(c => known.has(c)) && i < 3) }));
       s.picked = Object.fromEntries(s.orgs.map(o => [o, s.selected.includes(o)]));
+      Object.assign(s, { ai_provider: s.ai.provider, api_base_url: s.ai.api_base_url, api_model: s.ai.api_model, api_key: "", aiTest: "", aiTesting: false });
       this.setup = s;
     } catch (e) { this.toast(e.message, true); }
+  },
+  setupAI() {
+    const s = this.setup, f = { ai_provider: s.ai_provider };
+    if (s.ai_provider === "api") Object.assign(f, { api_base_url: s.api_base_url, api_model: s.api_model, ...(s.api_key ? { api_key: s.api_key } : {}) });
+    return f;
+  },
+  async testSetupAI() {
+    const s = this.setup;
+    s.aiTesting = true; s.aiTest = "";
+    try {
+      await api("/api/settings", this.setupAI());
+      s.aiTest = "✓ " + (await api("/api/settings/test", { what: "ai" })).out;
+      this.load();
+    } catch (e) { s.aiTest = "✗ " + e.message; }
+    finally { s.aiTesting = false; }
   },
   async finishSetup() {
     const s = this.setup;
     try {
       await api("/api/setup", { orgs: s.orgs.filter(o => s.picked[o]), repo_dirs: s.dirs.filter(d => d.on).map(d => d.path).join(":"),
-                                terminal: s.terminal, editor: s.editor, notify_cmd: s.notify_cmd });
+                                terminal: s.terminal, editor: s.editor, notify_cmd: s.notify_cmd, ...this.setupAI() });
       this.panel = null; this.toast("You're set. First sync takes a few seconds."); this.load();
     } catch (e) { this.toast(e.message, true); }
   },

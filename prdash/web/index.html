@@ -335,7 +335,17 @@
           <div class="field">
             <label :for="'s-' + f.key" x-text="f.label"></label>
             <template x-if="f.kind === 'bool'"><label class="toggle"><input type="checkbox" :id="'s-' + f.key" :checked="f.value" @change="saveSetting(f.key, $event.target.checked)"><span x-text="f.value ? 'On' : 'Off'"></span></label></template>
-            <template x-if="f.kind.startsWith('choice:')"><select :id="'s-' + f.key" @change="saveSetting(f.key, $event.target.value)"><template x-for="c in f.kind.slice(7).split(',')" :key="c"><option :value="c" x-text="c" :selected="f.value === c"></option></template></select></template>
+            <template x-if="f.key === 'theme'">
+              <div class="themes">
+                <template x-for="(t, k) in THEMES" :key="k">
+                  <button class="theme" :class="{ on: f.value === k }" @click="saveSetting('theme', k)" :title="t[0]">
+                    <span class="swatch" :style="`background: ${t[1]}`"><i :style="`background: ${t[2]}`"><b :style="`background: ${t[3]}`"></b><b :style="`background: ${t[4]}; opacity: .7`"></b></i></span>
+                    <span x-text="t[0]"></span>
+                  </button>
+                </template>
+              </div>
+            </template>
+            <template x-if="f.kind.startsWith('choice:') && f.key !== 'theme'"><select :id="'s-' + f.key" @change="saveSetting(f.key, $event.target.value)"><template x-for="c in f.kind.slice(7).split(',')" :key="c"><option :value="c" x-text="c" :selected="f.value === c"></option></template></select></template>
             <template x-if="f.kind === 'text'"><textarea :id="'s-' + f.key" rows="4" :value="f.value" @change="saveSetting(f.key, $event.target.value)"></textarea></template>
             <template x-if="f.kind === 'secret'">
               <div class="row tight"><input type="password" :id="'s-' + f.key" autocomplete="off" :placeholder="f.set ? '•••••••• saved' : 'not set'" @change="$event.target.value && saveSetting(f.key, $event.target.value); $event.target.value = ''">
@@ -347,6 +357,7 @@
         </template>
         <div class="acts" x-show="settingsTab === 'Slack'"><button class="btn" @click="testSetting('slack')" :disabled="!settings.slack">Test Slack</button></div>
         <div class="acts" x-show="settingsTab === 'Jira'"><button class="btn" @click="testSetting('jira')" :disabled="!settings.jira">Test Jira</button></div>
+        <div class="acts" x-show="settingsTab === 'AI'"><button class="btn" @click="testSetting('ai')"><svg class="ic"><use href="/static/icons.svg#sparkles"/></svg>Test AI</button></div>
         <div class="acts" x-show="settingsTab === 'Notifications'"><button class="btn" @click="testSetting('notify')">Send test notification</button>
           <button class="btn" x-show="'Notification' in window" @click="askNotify()">Allow browser notifications</button></div>
         <p class="dim small footnote">Saved in your prdash database (owner-only permissions). Environment variables like PRDASH_ORGS still work as defaults.</p>
@@ -395,10 +406,34 @@
               <label>Terminal <input class="mono" x-model="setup.terminal" spellcheck="false"></label>
               <label>Editor <input class="mono" x-model="setup.editor" spellcheck="false"></label>
             </div>
-            <p class="small" :class="setup.ai.ready ? 'dim' : 'warn'">
-              <span x-show="setup.ai.ready" x-text="'✓ ' + setup.ai.name + ' is set up for reviews and standup summaries. Change it in Settings → AI.'"></span>
-              <span x-show="!setup.ai.ready">No AI found. Install Claude Code, Codex, or Gemini CLI, or add an OpenAI-compatible API (DeepSeek, Grok, Ollama…) in Settings → AI.</span>
-            </p>
+          </li>
+          <li :class="{ done: setup.ai_provider !== 'api' ? setup.ai.installed[setup.ai_provider] : setup.api_base_url && setup.api_model }">
+            <h4>AI for reviews and summaries</h4>
+            <div class="checks-grid">
+              <template x-for="[k, label] in [['claude', 'Claude Code'], ['codex', 'Codex'], ['api', 'Any API']]" :key="k">
+                <label class="toggle pickbox"><input type="radio" name="ai" :value="k" x-model="setup.ai_provider"><span x-text="label"></span>
+                  <b class="dim" x-show="k !== 'api'" x-text="setup.ai.installed[k] ? 'installed' : 'not found'"></b></label>
+              </template>
+            </div>
+            <template x-if="setup.ai_provider === 'api'">
+              <div>
+                <div class="chips-row preset-row">
+                  <template x-for="(v, name) in AI_PRESETS" :key="name">
+                    <button class="fchip" :class="{ on: setup.api_base_url === v[0] }" @click="setup.api_base_url = v[0]; setup.api_model = setup.api_model && setup.api_base_url === v[0] ? setup.api_model : v[1]" x-text="name"></button>
+                  </template>
+                </div>
+                <div class="tools">
+                  <label>Base URL <input class="mono" x-model="setup.api_base_url" spellcheck="false" placeholder="https://…/v1"></label>
+                  <label>Model <input class="mono" x-model="setup.api_model" spellcheck="false" placeholder="model name"></label>
+                </div>
+                <div class="tools single"><label>API key <input type="password" autocomplete="off" x-model="setup.api_key" :placeholder="setup.ai.has_key ? '•••••••• saved' : 'not needed for Ollama'"></label></div>
+              </div>
+            </template>
+            <div class="row tight">
+              <button class="btn sm" @click="testSetupAI()" :disabled="setup.aiTesting"><svg class="ic" :class="{ spin: setup.aiTesting }"><use href="/static/icons.svg#sparkles"/></svg><span x-text="setup.aiTesting ? 'Testing…' : 'Test'"></span></button>
+              <span class="small" :class="setup.aiTest.startsWith('✓') ? 'dim' : 'err'" x-text="setup.aiTest"></span>
+            </div>
+            <p class="dim small">PR text and diffs go to the provider you pick. CLIs run read-only.</p>
           </li>
         </ol>
         <ol class="steps" style="counter-reset: s 4">
