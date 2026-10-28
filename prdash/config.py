@@ -41,7 +41,7 @@ def default_notify():
 # key: (default, kind, section, label, help). kind: str | text | int | bool | secret | choice:a,b
 THEMES = "system,dark,light,nord,dracula,tokyo,catppuccin,gruvbox,solarized,rosepine"
 FIELDS = {
-    "theme": ("system", "choice:" + THEMES, "Appearance", "Theme", "Saved with your settings, so it follows you to any browser."),
+    "theme": ("system", "choice:" + THEMES, "Appearance", "Theme", ""),
     "orgs": ("", "str", "GitHub", "Organizations", "Comma-separated. Leave empty to use every org you belong to."),
     "extra_query": ("", "str", "GitHub", "Extra search filter",
                     "Added to every GitHub search, e.g. -author:app/dependabot -label:wip"),

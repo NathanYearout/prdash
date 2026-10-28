@@ -352,7 +352,7 @@
                 <button class="btn sm" x-show="f.set" @click="saveSetting(f.key, null)">Remove</button></div>
             </template>
             <template x-if="['str', 'int'].includes(f.kind)"><input :id="'s-' + f.key" :type="f.kind === 'int' ? 'number' : 'text'" spellcheck="false" :value="f.value" @change="saveSetting(f.key, $event.target.value)"></template>
-            <p class="help"><span x-text="f.help"></span> <a href="#" x-show="f.custom" @click.prevent="saveSetting(f.key, null)">Reset to default</a></p>
+            <p class="help" x-show="f.key !== 'theme'"><span x-text="f.help"></span> <a href="#" x-show="f.custom" @click.prevent="saveSetting(f.key, null)">Reset to default</a></p>
           </div>
         </template>
         <div class="acts" x-show="settingsTab === 'Slack'"><button class="btn" @click="testSetting('slack')" :disabled="!settings.slack">Test Slack</button></div>
@@ -360,7 +360,6 @@
         <div class="acts" x-show="settingsTab === 'AI'"><button class="btn" @click="testSetting('ai')"><svg class="ic"><use href="/static/icons.svg#sparkles"/></svg>Test AI</button></div>
         <div class="acts" x-show="settingsTab === 'Notifications'"><button class="btn" @click="testSetting('notify')">Send test notification</button>
           <button class="btn" x-show="'Notification' in window" @click="askNotify()">Allow browser notifications</button></div>
-        <p class="dim small footnote">Saved in your prdash database (owner-only permissions). Environment variables like PRDASH_ORGS still work as defaults.</p>
       </div>
       <button class="close abs" @click="panel = null"><svg class="ic"><use href="/static/icons.svg#x"/></svg></button>
     </div>

@@ -314,7 +314,6 @@ main { padding: 18px 24px 60px; }
 .field > label:first-child { font-weight: 600; font-size: 13px; }
 .field input:not([type=checkbox]), .field select, .field textarea { width: 100%; font-family: var(--mono); font-size: 12.5px; }
 .field .help { margin: 0; color: var(--dim); font-size: 12px; }
-.footnote { margin: 8px 0 0; }
 .palette { padding-top: 12vh; background: rgb(5 7 10 / .45); }
 .pal { overflow: hidden; }
 .pal-in { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--line); color: var(--dim); }
@@ -356,13 +355,13 @@ main { padding: 18px 24px 60px; }
 .tools label { display: grid; gap: 4px; font-size: 12px; color: var(--dim); }
 .tools.single { grid-template-columns: 1fr; margin-top: 10px; }
 .preset-row { margin: 10px 0; }
-.themes { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 10px; }
-.theme { display: grid; gap: 6px; padding: 6px; background: none; border: 1px solid var(--line); border-radius: 10px; color: var(--muted); cursor: pointer; font: 500 12px var(--sans); text-align: left; }
+.themes { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; }
+.theme { display: grid; gap: 6px; padding: 6px; background: none; border: 1px solid var(--line); border-radius: 10px; color: var(--muted); cursor: pointer; font: 500 14px var(--sans); text-align: left; }
 .theme:hover { border-color: var(--line-hi); color: var(--text); }
 .theme.on { border-color: var(--accent); color: var(--text); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent); }
-.swatch { display: block; height: 54px; border-radius: 6px; padding: 9px; border: 1px solid rgb(127 127 127 / .2); }
-.swatch i { display: grid; gap: 5px; height: 100%; border-radius: 4px; padding: 7px; align-content: start; }
-.swatch b { display: block; height: 5px; border-radius: 3px; width: 70%; }
+.swatch { display: block; height: 90px; border-radius: 6px; padding: 9px; border: 1px solid rgb(127 127 127 / .2); }
+.swatch i { display: grid; gap: 7px; height: 100%; border-radius: 4px; padding: 7px; align-content: start; }
+.swatch b { display: block; height: 7px; border-radius: 3px; width: 70%; }
 .swatch b + b { width: 45%; }
 .setup-foot { display: flex; align-items: center; gap: 16px; justify-content: space-between; margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--line); }
 
