@@ -289,6 +289,8 @@ main { padding: 18px 24px 60px; }
 .checks li a { color: var(--text); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .thread { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 10px; }
 .thread p { margin: 2px 0 0; font-size: 12.5px; white-space: pre-wrap; }
+.convo p { overflow-wrap: anywhere; cursor: pointer; }
+.convo p.clamp { display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden; }
 .events { list-style: none; margin: 12px -8px 0; padding: 0; }
 .events li { display: flex; gap: 10px; align-items: flex-start; padding: 9px 8px; border-radius: 8px; cursor: pointer; color: var(--muted); font-size: 13px; }
 .events li:hover { background: var(--card-hi); }

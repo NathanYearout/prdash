@@ -85,6 +85,20 @@ def bump(comments):
     return {"who": (hits[-1]["author"] or {}).get("login", "ghost"), "at": hits[-1]["createdAt"]} if hits else None
 
 
+def plain(body, limit=None):
+    """Comment text without the HTML comments PR templates leave behind; one line when trimmed for a notification."""
+    text = re.sub(r"\n{3,}", "\n\n", re.sub(r"<!--.*?-->", "", body or "", flags=re.S)).strip()
+    if limit:
+        text = " ".join(text.split())
+        text = text if len(text) <= limit else text[:limit - 1].rstrip() + "…"
+    return text
+
+
+def last_comment(comments):
+    c = comments[-1] if comments else None
+    return {"who": (c["author"] or {}).get("login", "ghost"), "at": c["createdAt"], "text": plain(c["body"], 140)} if c else None
+
+
 def flatten(n):
     commits = n["commits"]["nodes"]
     rollup = commits and commits[0]["commit"]["statusCheckRollup"]
@@ -103,6 +117,7 @@ def flatten(n):
         "labels": [l["name"] for l in n["labels"]["nodes"]],
         "comments": n["comments"]["totalCount"],
         "bump": bump(n["comments"]["nodes"]),
+        "last_comment": last_comment(n["comments"]["nodes"]),
         "urgent": bool(URGENT.search(n["title"])) or any(URGENT.search(l["name"]) for l in n["labels"]["nodes"]),
         "jira": sorted(set(JIRA_KEY.findall(n["title"] + " " + n["headRefName"]))),
         "reviewers": [{"who": k, "state": v} for k, v in reviewed.items()]
@@ -169,6 +184,29 @@ def checks(url):
     rank = {"FAILURE": 0, "ERROR": 0, "TIMED_OUT": 0, "CANCELLED": 1, "ACTION_REQUIRED": 1, "IN_PROGRESS": 2,
             "QUEUED": 2, "PENDING": 2, "EXPECTED": 2}
     return sorted(out, key=lambda c: (rank.get(c["state"], 3), c["name"]))
+
+
+REVIEW_WHAT = {"APPROVED": "approved", "CHANGES_REQUESTED": "requested changes", "COMMENTED": "reviewed", "DISMISSED": "review dismissed"}
+
+
+def conversation(url):
+    """Description, comments, reviews, and inline code comments, oldest first."""
+    who = lambda n: (n["author"] or {}).get("login", "ghost")
+    q = """query($u: URI!) { resource(url: $u) { ... on PullRequest { body createdAt author { login }
+             comments(last: 100) { nodes { body createdAt url author { login } } }
+             reviews(last: 50) { nodes { state body submittedAt url author { login }
+               comments(first: 50) { nodes { body createdAt url path line originalLine author { login } } } } } } } }"""
+    pr = gql(q, u=url)["resource"]
+    out = [{"who": who(pr), "what": "opened", "at": pr["createdAt"], "text": plain(pr["body"]), "url": url}] if plain(pr["body"]) else []
+    out += [{"who": who(c), "what": "commented", "at": c["createdAt"], "text": plain(c["body"]), "url": c["url"]}
+            for c in pr["comments"]["nodes"]]
+    for r in pr["reviews"]["nodes"]:
+        if plain(r["body"]) or r["state"] in ("APPROVED", "CHANGES_REQUESTED"):  # bare COMMENTED reviews just hold inline comments
+            out.append({"who": who(r), "what": REVIEW_WHAT.get(r["state"], "reviewed"), "at": r["submittedAt"],
+                        "text": plain(r["body"]), "url": r["url"]})
+        out += [{"who": who(c), "what": "commented on", "at": c["createdAt"], "text": plain(c["body"]), "url": c["url"],
+                 "path": c["path"], "line": c["line"] or c["originalLine"]} for c in r["comments"]["nodes"]]
+    return sorted(out, key=lambda c: c["at"] or "")
 
 
 def rerun_failed(url):

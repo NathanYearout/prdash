@@ -72,6 +72,36 @@ class Inbox(unittest.TestCase):
         merged = {u: pr(author="me", merged="2026-10-03", merged_by="alice")}
         self.assertEqual([k for _, k, _ in sync.diff(old, merged, "me", set(), set())], ["merged"])
 
+    def test_comment_events_say_who_and_what(self):
+        u = NODE["url"]
+        text = lambda k, who: [t for _, kind, t in sync.diff({u: pr(author="me", comments=1)},
+            {u: pr(author="me", comments=1 + k, last_comment={"who": who, "at": "x", "text": "Can we limit retries?"})},
+            "me", set(), set()) if kind == "comment"]
+        self.assertEqual(text(1, "alice"), ['alice commented on web#1 [ABC-12] Fix: "Can we limit retries?"'])
+        self.assertEqual(text(2, "bob"), ['2 new comments on web#1 [ABC-12] Fix, latest from bob: "Can we limit retries?"'])
+        self.assertEqual(text(1, "me"), [])  # your own comment isn't news
+
+    def test_last_comment_and_conversation(self):
+        nodes = [{"body": "old", "createdAt": "1", "author": None},
+                 {"body": "<!-- template -->\nLooks   good,\nship it", "createdAt": "2", "author": {"login": "alice"}}]
+        self.assertEqual(github.last_comment(nodes), {"who": "alice", "at": "2", "text": "Looks good, ship it"})
+        self.assertEqual(len(github.last_comment([{**nodes[1], "body": "x" * 500}])["text"]), 140)
+        me = {"login": "me"}
+        data = {"resource": {"body": "<!-- fill this in -->", "createdAt": "0", "author": me,
+                "comments": {"nodes": [{"body": "LGTM", "createdAt": "3", "url": "c1", "author": {"login": "bob"}}]},
+                "reviews": {"nodes": [
+                    {"state": "COMMENTED", "body": "", "submittedAt": "1", "url": "r1", "author": {"login": "alice"},
+                     "comments": {"nodes": [{"body": "nit", "createdAt": "1", "url": "i1", "path": "a.py", "line": None,
+                                             "originalLine": 7, "author": {"login": "alice"}}]}},
+                    {"state": "APPROVED", "body": "", "submittedAt": "2", "url": "r2", "author": {"login": "alice"}, "comments": {"nodes": []}}]}}}
+        real, github.gql = github.gql, lambda q, **v: data
+        try:
+            convo = github.conversation(NODE["url"])
+        finally:
+            github.gql = real
+        self.assertEqual([(c["who"], c["what"], c.get("path"), c.get("line")) for c in convo],
+                         [("alice", "commented on", "a.py", 7), ("alice", "approved", None, None), ("bob", "commented", None, None)])
+
     def test_diff_ignores_others_and_new(self):
         u = NODE["url"]
         self.assertEqual(sync.diff({u: pr(author="bob")}, {u: pr(author="bob", ci="FAILURE")}, "me", set(), set()), [])

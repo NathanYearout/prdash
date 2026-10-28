@@ -110,7 +110,17 @@ def seed():
 def detail(pr):
     checks = [("build", "SUCCESS"), ("lint", "SUCCESS"), ("unit tests", "FAILURE" if pr["ci"] == "FAILURE" else "SUCCESS"),
               ("e2e", "IN_PROGRESS" if pr["ci"] == "PENDING" else "SUCCESS"), ("CodeQL", "SUCCESS")]
+    at = lambda h: iso(datetime.now(timezone.utc) - timedelta(hours=h))
+    reviewer = (pr["reviewers"] or [{"who": "maya-chen"}])[0]["who"]
+    convo = [{"who": pr["author"], "what": "opened", "at": pr["created"], "url": pr["url"],
+              "text": f"{pr['title']}.\n\nTested locally against staging; screenshots in the ticket."},
+             {"who": reviewer, "what": "commented on", "at": at(20), "url": pr["url"] + "#r1", "path": f"{pr['repo']}/handlers.py", "line": 88,
+              "text": "This retries on every 4xx too. Can we limit it to 429 and 5xx?"},
+             {"who": pr["author"], "what": "commented on", "at": at(18), "url": pr["url"] + "#r2", "path": f"{pr['repo']}/handlers.py", "line": 88,
+              "text": "Good catch, fixed in the latest push."},
+             {"who": reviewer, "what": "approved", "at": at(3), "url": pr["url"] + "#r3", "text": "Looks good once CI is green."}]
     return {"checks": [{"name": f"CI / {n}", "state": s, "url": pr["url"] + "/checks", "run": 1} for n, s in checks],
+            "conversation": convo,
             "git": {"clone": f"~/code/{pr['repo']}", "worktree": None, "branch": "main", "dirty": False, "on_pr": False}}
 
 

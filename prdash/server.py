@@ -138,7 +138,7 @@ def detail(url):
     if DEMO:
         from . import demo
         return demo.detail(pr)
-    parts = {"checks": lambda: github.checks(url), "git": lambda: local.state(pr)}
+    parts = {"checks": lambda: github.checks(url), "conversation": lambda: github.conversation(url), "git": lambda: local.state(pr)}
     if integrations.slack_ready():
         parts["slack"] = lambda: integrations.slack_thread(pr)
     if integrations.jira_ready() and pr["jira"]:

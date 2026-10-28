@@ -70,8 +70,13 @@ def diff(old, new, me, review_before, review_after):
             if r["state"] != "REQUESTED" and before.get(r["who"]) != r["state"] and r["who"] != me:
                 events.append((url, "review", f'{r["who"]} {REVIEW_VERB.get(r["state"], "reviewed")} {label(n)}'))
         if n["comments"] > o["comments"]:
-            k = n["comments"] - o["comments"]
-            events.append((url, "comment", f'{k} new comment{"s" * (k > 1)} on {label(n)}'))
+            k, c = n["comments"] - o["comments"], n.get("last_comment")
+            if not c:
+                events.append((url, "comment", f'{k} new comment{"s" * (k > 1)} on {label(n)}'))
+            elif k == 1 and c["who"] != me:
+                events.append((url, "comment", f'{c["who"]} commented on {label(n)}: "{c["text"]}"'))
+            elif k > 1:
+                events.append((url, "comment", f'{k} new comments on {label(n)}, latest from {c["who"]}: "{c["text"]}"'))
         if n["mergeable"] == "CONFLICTING" and o["mergeable"] != "CONFLICTING":
             events.append((url, "conflict", f'Merge conflict with {n["base"]}: {label(n)}'))
     return events
