@@ -67,6 +67,20 @@ const teamMs = await time("render team board", async () => { await key("3"); awa
 check("team view renders fast", teamMs < 400, `${await app("a.list.length")} PRs`);
 await shot("02-board-team");
 
+// j scrolls a long column; k must bring the column headers back, not stop with the first card under the sticky bar
+await js(`(async () => {
+  const a = Alpine.$data(document.body);
+  const n = a.order.length;
+  for (let i = 0; i < n; i++) { document.dispatchEvent(new KeyboardEvent("keydown", { key: "j", bubbles: true })); await a.$nextTick(); }
+  for (let i = 0; i < n + 1; i++) { document.dispatchEvent(new KeyboardEvent("keydown", { key: "k", bubbles: true })); await a.$nextTick(); }
+})()`);
+{
+  const bar = await js(`document.querySelector("header").getBoundingClientRect().bottom`);
+  const heads = await js(`[...document.querySelectorAll(".col-h")].filter(h => h.getClientRects().length).map(h => h.getBoundingClientRect().top)`);
+  check("k brings column headers back", heads.length > 0 && heads.every(t => t >= bar - 1), `heads ${heads.map(t => Math.round(t))} bar ${Math.round(bar)}`);
+}
+await js(`scrollTo(0, 0)`);
+
 for (const [q, expect] of [["updated:<3d", n => n >= 0], ["reviewer:@me", n => n >= 0], ["size:>500 -is:draft", n => n >= 0], ["author:zzz-nobody", n => n === 0]]) {
   await app(`a.q = ${JSON.stringify(q)}`); await sleep(150);
   const n = await app("a.list.length");

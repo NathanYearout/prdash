@@ -23,6 +23,24 @@ const CHIMES = { urgent: [988, 988], bad: [659, 523], good: [784, 1047], ping: [
 const CHIME_OF = { urgent: "urgent", ci_failed: "bad", conflict: "bad", retry_failed: "bad", request_failed: "bad", closed: "bad",
                    merged: "good", ci_passed: "good", retry_ok: "good", requested: "good" };
 let audio;
+
+// scrollIntoView(nearest) stops when the card touches the viewport. The sticky bar then covers the top of
+// the card, and the column header above the first card stays scrolled off, so k never brings the top back.
+function reveal(el) {
+  el.scrollIntoView({ block: "nearest", inline: "nearest" });
+  const bar = document.querySelector("header")?.getBoundingClientRect().bottom ?? 0;
+  const col = el.closest(".col");
+  const first = (col || el.closest("tbody"))?.querySelector("[data-url]");
+  const head = first === el && (col?.querySelector(":scope > .col-h") || el.closest("table"));
+  const anchor = head || el;
+  const limit = bar + 8;
+  for (let n = 0; n < 3; n++) { // content-visibility placeholders above the card settle as they render
+    const top = anchor.getBoundingClientRect().top;
+    if (top >= limit - 1) break;
+    window.scrollBy(0, top - limit);
+  }
+}
+
 function chime(kind, at = 0) {
   audio ||= new AudioContext();
   audio.resume(); // browsers start it suspended until the page has had a click
@@ -736,7 +754,10 @@ Alpine.data("prdash", () => ({
       if (!next) return;
       this.focus = next.url;
       if (this.sel) this.sel = next.url; // drawer open: j/k walks the queue
-      this.$nextTick(() => document.querySelector(`[data-url="${CSS.escape(next.url)}"]`)?.scrollIntoView({ block: "nearest" }));
+      this.$nextTick(() => { // board and table both render the row; the hidden layout's copy has no box
+        const el = [...document.querySelectorAll(`[data-url="${CSS.escape(next.url)}"]`)].find(e => e.getClientRects().length);
+        if (el) reveal(el);
+      });
     };
     const keys = {
       "/": () => this.$refs.search.focus(), "?": () => (this.panel = "help"), f: () => (this.builderOpen = !this.builderOpen),
