@@ -299,7 +299,7 @@
                           </template>
                           <template x-if="replyFor === g.t.id">
                             <div class="reply inline">
-                              <textarea :id="'reply-' + g.t.id" rows="2" x-model="replyBody" aria-label="Reply" placeholder="Reply (Ctrl Enter to send, Esc to cancel)"
+                              <textarea :id="'reply-' + g.t.id" rows="2" @input="mentionInput" @keydown="mentionKey" @blur="mention = null" x-model="replyBody" aria-label="Reply" placeholder="Reply (Ctrl Enter to send, Esc to cancel)"
                                 @keydown.ctrl.enter="replyBody && act('thread_reply', pane, { arg: g.t.id, body: replyBody })"
                                 @keydown.meta.enter="replyBody && act('thread_reply', pane, { arg: g.t.id, body: replyBody })" @keydown.escape.stop="replyFor = null"></textarea>
                               <div class="acts">
@@ -321,7 +321,7 @@
         <div class="dim small" x-show="!detail.conversation && !detail.conversation_error">Loading…</div>
         <div class="err small" x-show="detail.conversation_error" x-text="detail.conversation_error"></div>
         <div class="reply" x-show="!pane.merged">
-          <textarea rows="2" x-ref="composer" x-model="cbody" aria-label="Comment" placeholder="Leave a comment (m to jump here, Ctrl Enter to send)" @keydown.ctrl.enter="cbody && act('comment', pane)" @keydown.meta.enter="cbody && act('comment', pane)"></textarea>
+          <textarea rows="2" x-ref="composer" @input="mentionInput" @keydown="mentionKey" @blur="mention = null" x-model="cbody" aria-label="Comment" placeholder="Leave a comment (m to jump here, @ to mention, Ctrl Enter to send)" @keydown.ctrl.enter="cbody && act('comment', pane)" @keydown.meta.enter="cbody && act('comment', pane)"></textarea>
           <div class="acts">
             <template x-if="pane.author !== data?.me"><button class="btn" @click="act('request_changes', pane)" :disabled="isBusy('request_changes', pane)">Request changes</button></template>
             <template x-if="pane.author !== data?.me"><button class="btn go" :class="{ armed: armed === 'approve' + pane.url }" @click="act('approve', pane)" :disabled="isBusy('approve', pane)"><svg class="ic"><use href="/static/icons.svg#check"/></svg><span x-text="armed === 'approve' + pane.url ? 'Click to confirm' : 'Approve'"></span></button></template>
@@ -734,6 +734,11 @@
   </div>
 </div>
 
+<ul class="mentions" x-show="mentionList.length" :style="mention && `left: ${mention.r.left}px; bottom: ${innerHeight - mention.r.top + 4}px`">
+  <template x-for="(u, i) in mentionList" :key="u">
+    <li :class="{ on: i === mention.i }" @mouseenter="mention.i = i" @mousedown.prevent="pickMention(i)"><img class="av sm" :src="avatar(u)" alt="" onerror="this.style.visibility='hidden'"><span x-text="u"></span></li>
+  </template>
+</ul>
 <div class="toast" :class="{ show: toastMsg, err: toastErr }" x-text="toastMsg"></div>
 </body>
 </html>
