@@ -258,6 +258,7 @@ main { padding: 18px 24px 60px; }
 .scrim { position: fixed; inset: 0; background: rgb(5 7 10 / .55); backdrop-filter: blur(2px); z-index: 9; }
 .drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(540px, 100vw); z-index: 10; background: var(--panel); border-left: 1px solid var(--line);
   overflow: hidden auto; padding: 18px 24px 40px; transition: transform .2s cubic-bezier(.2, .8, .2, 1); box-shadow: -24px 0 48px rgb(0 0 0 / .3); }
+.drawer.wide { width: min(1000px, 100vw); }
 .drawer.off { transform: translateX(100%); }
 .drawer h2 { font-size: 18px; font-weight: 650; line-height: 1.35; letter-spacing: -.01em; margin: 14px 0 2px; }
 .drawer section { border-top: 1px solid var(--line); margin-top: 20px; padding-top: 16px; }

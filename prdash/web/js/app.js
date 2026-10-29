@@ -45,7 +45,7 @@ const COLUMNS = {
   review: ["Review", p => RANK.review[p.review] ?? 3], size: ["Size", p => p.adds + p.dels],
   created: ["Age", p => p.created], updated: ["Updated", p => p.updated], note: ["Note", (p, l) => l.note || ""],
 };
-const PERSISTED = ["scope", "preset", "layout", "q", "sort", "dir", "showHidden", "heat"];
+const PERSISTED = ["scope", "preset", "layout", "q", "sort", "dir", "showHidden", "heat", "wide"];
 // age colors: days since a PR opened, on a log scale up to 6 months so very old PRs keep getting redder.
 // Green at 0, amber around a week, red around a month, then a red tint that deepens until 6 months.
 const AGE_MAX = 180;
@@ -111,7 +111,7 @@ const plusDays = n => new Date(Date.now() + n * DAY).toISOString().slice(0, 10);
 
 Alpine.data("prdash", () => ({
   STATUSES, PRESETS, SCOPES, COLUMNS, SYNTAX, BUILDER, EVENT_ICON, THEMES, AI_PRESETS, heatStyle,
-  scope: "mine", preset: "open", layout: "board", q: "", sort: "updated", dir: -1, showHidden: false, heat: false,
+  scope: "mine", preset: "open", layout: "board", q: "", sort: "updated", dir: -1, showHidden: false, heat: false, wide: false,
   replyFor: null, replyBody: "", inboxFilter: "all", insights: null, insightsView: "mine",
   rev: 0, cfg: {}, status: { syncing: false, at: null, error: null }, now: Date.now(), sel: null, focus: null, picked: {}, detail: {}, detailFor: null,
   cbody: "", convoAll: false, armed: null, busy: {}, toastMsg: "", toastErr: false, panel: null, palQ: "", palI: 0, settings: null,
@@ -633,7 +633,7 @@ Alpine.data("prdash", () => ({
       1: () => this.setScope("mine"), 2: () => this.setScope("review"), 3: () => this.setScope("team"),
       b: () => (this.layout = "board"), t: () => (this.layout = "table"), r: () => this.sync(),
       i: () => this.openInbox(), ",": () => this.openSettings(), u: () => this.openStandup(), s: () => this.openInsights(),
-      g: () => (this.heat = !this.heat),
+      g: () => (this.heat = !this.heat), W: () => (this.wide = !this.wide),
       j: () => move(1), k: () => move(-1), ArrowDown: () => move(1), ArrowUp: () => move(-1),
       X: () => this.pickAll(),
     };

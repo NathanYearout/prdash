@@ -150,7 +150,7 @@
 </div>
 
 <div class="scrim" x-show="cur || ['inbox', 'settings', 'standup', 'help', 'insights'].includes(panel)" x-transition.opacity @click="sel = null; panel = null"></div>
-<aside class="drawer" x-show="cur && !panel" x-transition:enter-start="off" x-transition:leave-end="off">
+<aside class="drawer" :class="{ wide }" x-show="cur && !panel" x-transition:enter-start="off" x-transition:leave-end="off">
   <template x-if="pane">
     <div>
       <div class="d-head">
@@ -160,6 +160,7 @@
         <span class="dim small nowrap" x-show="order.some(p => p.url === sel)" x-text="(order.findIndex(p => p.url === sel) + 1) + ' of ' + order.length"></span>
         <button class="icon-btn" @click="key({ key: 'k', preventDefault() {} })" title="Previous (k)"><svg class="ic"><use href="/static/icons.svg#chevron-left"/></svg></button>
         <button class="icon-btn" @click="key({ key: 'j', preventDefault() {} })" title="Next (j)"><svg class="ic"><use href="/static/icons.svg#chevron-right"/></svg></button>
+        <button class="icon-btn" @click="wide = !wide" :title="wide ? 'Narrow panel (W)' : 'Widen panel (W)'"><svg class="ic"><use :href="'/static/icons.svg#' + (wide ? 'minimize-2' : 'maximize-2')"/></svg></button>
         <button class="close" @click="sel = null" title="Close (esc)"><svg class="ic"><use href="/static/icons.svg#x"/></svg></button>
       </div>
       <h2 x-text="pane.title"></h2>
@@ -605,7 +606,7 @@
         <dt><kbd>Enter</kbd></dt><dd>Open PR</dd><dt><kbd>x</kbd> <kbd>X</kbd></dt><dd>Select · select all</dd>
         <dt><kbd>c</kbd> <kbd>v</kbd></dt><dd>Open in your AI · AI review</dd><dt><kbd>e</kbd> <kbd>w</kbd></dt><dd>Editor · worktree</dd>
         <dt><kbd>p</kbd> <kbd>y</kbd></dt><dd>Announce in Slack · copy link</dd><dt><kbd>a</kbd></dt><dd>Approve (press twice)</dd>
-        <dt><kbd>z</kbd> <kbd>h</kbd></dt><dd>Snooze a day · hide</dd><dt><kbd>O</kbd></dt><dd>Open on GitHub</dd>
+        <dt><kbd>z</kbd> <kbd>h</kbd></dt><dd>Snooze a day · hide</dd><dt><kbd>O</kbd> <kbd>W</kbd></dt><dd>Open on GitHub · widen panel</dd>
         <dt><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd></dt><dd>Mine · Review requested · Team</dd><dt><kbd>b</kbd> <kbd>t</kbd></dt><dd>Board · table</dd>
         <dt><kbd>m</kbd></dt><dd>Comment on the PR</dd><dt><kbd>g</kbd></dt><dd>Color PRs by age</dd>
         <dt><kbd>i</kbd> <kbd>u</kbd> <kbd>s</kbd></dt><dd>Inbox · standup · insights</dd><dt><kbd>,</kbd> <kbd>r</kbd></dt><dd>Settings · sync now</dd>

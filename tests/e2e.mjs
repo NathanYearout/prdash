@@ -92,6 +92,9 @@ await sleep(300);
 await shot("04-drawer");
 await key("j"); await sleep(200);
 check("j in drawer walks queue", (await app("a.sel")) !== focused);
+await key("W"); await sleep(250);
+check("W widens drawer", await app(`document.querySelector("aside.drawer.wide").offsetWidth > 540`));
+await key("W");
 
 // local fields: waiting, snooze, tags (restored afterwards)
 const url = await app("a.sel");
