@@ -1,5 +1,5 @@
 """Local HTTP server: the page, a JSON API, and a server-sent-events stream for live updates."""
-import hashlib, hmac, json, queue, secrets, shutil, statistics, time
+import hashlib, hmac, json, queue, re, secrets, shutil, statistics, time
 from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor
 from http.cookies import SimpleCookie
@@ -18,6 +18,7 @@ DEMO = False
 OPS = {
     **{op: (lambda op: lambda pr, body, arg: github.act(op, pr["url"], body))(op) for op in github.ACTIONS},
     "rerequest": lambda pr, body, arg: github.rerequest(pr, [l.strip() for l in (arg or "").split(",") if l.strip()]),
+    "request": lambda pr, body, arg: request_review(pr, arg if isinstance(arg, dict) else {}),
     "thread_reply": lambda pr, body, arg: github.thread_reply(pr["url"], arg or "", body),
     "thread_resolve": lambda pr, body, arg: github.thread_resolve(pr["url"], arg or "", True),
     "thread_unresolve": lambda pr, body, arg: github.thread_resolve(pr["url"], arg or "", False),
@@ -26,7 +27,7 @@ OPS = {
     "retry_stop": lambda pr, body, arg: stop_retry(pr),
     "rerun": lambda pr, body, arg: github.rerun_failed(pr["url"]),
     "agent": lambda pr, body, arg: local.agent(pr),
-    "review": lambda pr, body, arg: start_review(pr),
+    "review": lambda pr, body, arg: start_review(pr, arg == "since"),
     "editor": lambda pr, body, arg: local.editor(pr),
     "terminal": lambda pr, body, arg: local.terminal(pr),
     "checkout": lambda pr, body, arg: local.checkout(pr),
@@ -36,12 +37,37 @@ OPS = {
     "slack_post": lambda pr, body, arg: integrations.slack_post(pr),
     "slack_find": lambda pr, body, arg: "found it" if integrations.slack_find(pr) else "not posted yet",
 }
-CHANGES_GITHUB = set(github.ACTIONS) | {"rerun", "rerequest", "thread_reply", "thread_resolve", "thread_unresolve", "retry"}
+CHANGES_GITHUB = set(github.ACTIONS) | {"rerun", "rerequest", "request", "thread_reply", "thread_resolve", "thread_unresolve", "retry"}
 
 
-def start_review(pr):
-    local.start_review(pr, _review_done)
+def start_review(pr, since=False):
+    """since: only what changed after your last review of it, with your earlier comments."""
+    commit = next((r.get("commit") for r in pr["reviewers"] if r["who"] == github.viewer()), None) if since else None
+    if since and commit in (None, pr["head"]):
+        raise ValueError("Nothing new since your last review.")
+    local.start_review(pr, _review_done, commit)
     return "Claude review started"
+
+
+def request_review(pr, arg):
+    """Request review now, or arm it for when CI is green (sync.requests_when_green). The choice is remembered per owner."""
+    names = lambda k: [x for x in arg.get(k) or [] if isinstance(x, str) and re.fullmatch(r"[\w.-]+", x)]
+    r = {"teams": names("teams"), "users": names("users"), "slack": bool(arg.get("slack"))}
+    if not r["teams"] and not r["users"]:
+        raise ValueError("Pick someone to review.")
+    if pr["merged"] or pr["state"] != "OPEN":
+        raise ValueError("This PR isn't open.")
+    with db.LOCK:
+        db.put("request_prefs", {**db.get("request_prefs", {}), pr["owner"]: r})
+    if not arg.get("green"):
+        return sync.request_now(pr, r)
+    # armed on a red PR: wait for a fix to be pushed, not for the current failure to clear
+    db.local_update(pr["url"], {"request_when_green": {**r, "at": time.time(), "skip": pr["head"] if pr["ci"] in ("FAILURE", "ERROR") else None}})
+    return "will request review once CI is green"
+
+
+def request_options(pr):
+    return {**github.candidates(pr), "prefs": db.get("request_prefs", {})}
 
 
 def _review_done(pr):
@@ -164,6 +190,8 @@ def detail(url):
         from . import demo
         return demo.detail(pr)
     parts = {"checks": lambda: github.checks(url), "conversation": lambda: github.conversation(url), "git": lambda: local.state(pr)}
+    if not pr["merged"] and pr["state"] == "OPEN":
+        parts["request"] = lambda: request_options(pr)
     if integrations.slack_ready():
         parts["slack"] = lambda: integrations.slack_thread(pr)
     if integrations.jira_ready() and pr["jira"]:

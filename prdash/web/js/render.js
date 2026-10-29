@@ -25,7 +25,10 @@ function chips(a, p) {
     l.waiting ? `<span class="chip wait">${icon("hourglass")}<span>${esc(l.waiting)}</span></span>` : "",
     l.snooze ? `<span class="chip snz">${icon("clock")}<span>until ${esc(l.snooze)}</span></span>` : "",
     ...a.tags(p).map(t => `<span class="chip tag">${esc(t)}</span>`),
-    ...a.flags(p).map(([short, tone, ic, long]) => `<span class="chip flag ${tone}" title="${esc(long)}">${ic ? icon(ic) : ""}<span>${esc(short)}</span></span>`),
+    ...a.flags(p).map(([short, tone, ic, long, href]) => {
+      const tag = href ? "a" : "span", link = href ? ` href="${esc(href)}" target="_blank" rel="noopener"` : "";
+      return `<${tag} class="chip flag ${tone}" title="${esc(long)}"${link}>${ic ? icon(ic) : ""}<span>${esc(short)}</span></${tag}>`;
+    }),
   ].join("");
 }
 

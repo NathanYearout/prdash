@@ -1,6 +1,6 @@
 // prdash page. One Alpine component; data comes from the local server (/api/state) and live updates over SSE.
 import Alpine from "../vendor/alpine.esm.js";
-import { compile, getTerm, setTerm, SYNTAX } from "./filter.js";
+import { compile, getTerm, setTerm, sinceReview, SYNTAX } from "./filter.js";
 import { card, md, row } from "./render.js";
 
 const DAY = 864e5;
@@ -59,7 +59,7 @@ const EVENT_ICON = {
   review_requested: "eye", review: "message-square", comment: "message-square", ci_failed: "triangle-alert", ci_passed: "check",
   merged: "git-merge", closed: "x", conflict: "triangle-alert", snooze: "clock", review_done: "sparkles", review_error: "triangle-alert",
   jira: "ticket", jira_error: "triangle-alert", bump: "alarm-clock", urgent: "siren", mention: "at-sign", pushed: "git-commit-horizontal",
-  retrying: "repeat", retry_ok: "circle-check", retry_failed: "triangle-alert",
+  retrying: "repeat", retry_ok: "circle-check", retry_failed: "triangle-alert", requested: "user-plus", request_failed: "triangle-alert",
 };
 const BUILDER = [ // filter builder rows: [key, label, options or "people"/"repos"]
   ["author", "Author", "people"], ["reviewer", "Reviewer", "people"], ["requested", "Review requested from", "people"],
@@ -69,8 +69,9 @@ const BUILDER = [ // filter builder rows: [key, label, options or "people"/"repo
   ["size", "Size", [["xs", "XS (<10 lines)"], ["s", "S (<100)"], ["m", "M (<500)"], ["l", "L (<1000)"], ["xl", "XL (1000+)"]]],
   ["ci", "CI", [["failing", "Failing"], ["pending", "Pending"], ["passing", "Passing"], ["none", "No checks"]]],
   ["review", "Review", [["needed", "Needed"], ["changes", "Changes requested"], ["approved", "Approved"], ["none", "None"]]],
-  ["is", "Is", [["urgent", "Urgent"], ["bumped", "Bumped"], ["pushed", "New commits since changes requested"], ["mentioned", "Mentions you"],
-                ["retrying", "Retrying until green"], ["following", "Following"], ["muted", "Muted"], ["draft", "Draft"], ["stale", "Stale"],
+  ["is", "Is", [["urgent", "Urgent"], ["bumped", "Bumped"], ["pushed", "New commits since changes requested"], ["new-since-review", "New since your review"], ["mentioned", "Mentions you"],
+                ["blocked", "Can't merge yet"], ["behind", "Behind its base"], ["auto-merge", "Auto-merge on"],
+                ["retrying", "Retrying until green"], ["requesting", "Review when green"], ["following", "Following"], ["muted", "Muted"], ["draft", "Draft"], ["stale", "Stale"],
                 ["conflict", "Conflicting"], ["posted", "Posted to Slack"], ["snoozed", "Snoozed"]]],
   ["has", "Has", [["threads", "Unresolved threads"], ["jira", "Ticket"], ["note", "Note"], ["tags", "Tags"], ["waiting", "Waiting on"], ["review", "AI review"]]],
 ];
@@ -114,7 +115,7 @@ Alpine.data("prdash", () => ({
   scope: "mine", preset: "open", layout: "board", q: "", sort: "updated", dir: -1, showHidden: false, heat: false,
   replyFor: null, replyBody: "", inboxFilter: "all", insights: null, insightsView: "mine",
   rev: 0, cfg: {}, status: { syncing: false, at: null, error: null }, now: Date.now(), sel: null, focus: null, picked: {}, detail: {}, detailFor: null,
-  cbody: "", convoAll: false, armed: null, busy: {}, toastMsg: "", toastErr: false, panel: null, palQ: "", palI: 0, settings: null,
+  cbody: "", convoAll: false, picker: null, armed: null, busy: {}, toastMsg: "", toastErr: false, panel: null, palQ: "", palI: 0, settings: null,
   settingsTab: "Appearance", events: [],
   standup: { window: "yesterday", text: "", summary: "", view: "details", loading: false, summarizing: false }, builderOpen: false, saved: [], more: {}, setup: null,
   notifyPermission: "Notification" in window ? Notification.permission : "unsupported", naming: null, tagging: null, lastPicked: null,
@@ -264,6 +265,8 @@ Alpine.data("prdash", () => ({
   get unread() { return this.data?.unread || 0; },
   L(p) { return (p && this.local?.[p.url]) || {}; },
   review(p) { return (p && this.data?.reviews[p.url]) || {}; },
+  sinceReview(p) { return p && sinceReview(p, this.data?.me); },
+  sinceHref(p) { return `${p.url}/files/${this.sinceReview(p)}..${p.head}`; },
   jira(key) { return this.data?.jira?.[key]; },
 
   // ---- rendering (see render.js)
@@ -306,7 +309,7 @@ Alpine.data("prdash", () => ({
     return `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><rect width="20" height="20" fill="hsl(${hue},45%,45%)"/><text x="10" y="14" font-size="9" font-family="sans-serif" fill="white" text-anchor="middle">${login.slice(0, 2).toUpperCase()}</text></svg>`)}`;
   },
   jiraHref(k) { return this.cfg.jira_url ? `${this.cfg.jira_url}/browse/${k}` : null; },
-  // [short, tone, icon, sentence]: why it's in Needs work, plus workflow nudges. The panel skips the ones its own sections show.
+  // [short, tone, icon, sentence, link]: why it's in Needs work, plus workflow nudges. The panel skips the ones its own sections show.
   flags(p, panel = false) {
     const f = [], idle = this.ago(p.updated);
     if (p.urgent && !p.merged) f.push(["Urgent", "urgent", null, "Marked urgent"]);
@@ -314,8 +317,12 @@ Alpine.data("prdash", () => ({
     if (p.ci === "FAILURE" || p.ci === "ERROR") f.push(["CI", "red", "triangle-alert", "CI is failing"]);
     if (p.review === "CHANGES_REQUESTED" && !p.fixes_pushed) f.push(["Changes", "red", "message-square", "Changes requested"]);
     if (p.mergeable === "CONFLICTING") f.push(["Conflicts", "red", "triangle-alert", `Merge conflicts with ${p.base}`]);
-    if (p.fixes_pushed && !p.merged) f.push(["New commits", "amber", "git-commit-horizontal", "New commits since changes were requested: ready for another look"]);
+    if (this.sinceReview(p) && !panel) f.push(["New since your review", "amber", "git-commit-horizontal", "Commits since your last review: opens just those changes", this.sinceHref(p)]);
+    else if (p.fixes_pushed && !p.merged) f.push(["New commits", "amber", "git-commit-horizontal", "New commits since changes were requested: ready for another look"]);
+    if (p.blocker && !panel) f.push([p.blocker, "muted", "hourglass", `Can't merge yet: ${p.blocker}`]);
+    if (p.auto_merge && !p.merged && !panel) f.push(["Auto-merge", "green", "git-merge", `Merges itself (${p.auto_merge.method}) once it's ready; turned on by ${p.auto_merge.by}`]);
     if (p.open_threads && !p.merged && !panel) f.push([`${p.open_threads} open`, "muted", "message-square", `${p.open_threads} unresolved review thread${p.open_threads > 1 ? "s" : ""}`]);
+    if (this.L(p).request_when_green && !p.merged && !panel) f.push(["Review when green", "amber", "user-plus", this.greenText(p)]);
     const r = this.L(p).retry;
     if (r && !p.merged) f.push([`Retrying ${r.attempts}/${r.max}`, "amber", "repeat", `Re-running failed jobs until CI passes (${r.attempts} of ${r.max} re-runs)`]);
     const base = !p.merged && this.heads[`${p.owner}/${p.repo}:${p.base}`];
@@ -377,7 +384,7 @@ Alpine.data("prdash", () => ({
     return keep.length < out.length ? [{ type: "more", key: "more", n: out.length - keep.length }, ...keep] : out;
   },
   async act(op, p, extra = {}) {
-    if (["merge", "close", "approve"].includes(op) && this.armed !== op + p.url) {
+    if (["merge", "automerge", "close", "approve"].includes(op) && this.armed !== op + p.url) {
       this.armed = op + p.url;
       return setTimeout(() => this.armed === op + p.url && (this.armed = null), 3000);
     }
@@ -390,6 +397,7 @@ Alpine.data("prdash", () => ({
       if (op.startsWith("thread_") || op === "rerequest") this.loadDetail(p.url);
       if (["retry", "retry_stop"].includes(op)) this.load();
       if (op === "review") this.load();
+      if (op === "request") { this.picker = null; this.load(); this.loadDetail(p.url); }
       if (["comment", "approve", "request_changes"].includes(op)) this.loadDetail(p.url);
       if (["slack_post", "slack_find", "worktree", "worktree_remove", "checkout", "clone"].includes(op)) { this.load(); this.loadDetail(p.url); }
     } catch (e) { this.toast(e.message, true); }
@@ -403,6 +411,41 @@ Alpine.data("prdash", () => ({
     setTimeout(() => { const el = this.$refs.composer; el?.scrollIntoView({ block: "center" }); el?.focus(); }, 250);
   },
   startReply(t) { this.replyFor = t.id; this.replyBody = ""; this.$nextTick(() => document.getElementById("reply-" + t.id)?.focus()); },
+
+  // ---- request review: a picker in the panel. Defaults come from what's already requested and what you last picked
+  // for this owner (detail.request.prefs, by owner so a still-loading panel can't carry another org's picks); picker only holds what you changed.
+  openPicker(p) {
+    if (!p || p.merged || p.state !== "OPEN") return;
+    this.sel = p.url; this.picker = { url: p.url, owner: p.owner, q: "", teams: {}, users: {}, green: null, slack: null };
+    setTimeout(() => document.getElementById("picker-q")?.focus(), 250);
+  },
+  // the org's teams, then people seen on its PRs (most active first) and the repo's collaborators; never the author.
+  // load: open, ready PRs in this org currently requesting them
+  reviewOptions(p) {
+    const { rev, detail } = this;
+    return memo("reviewOptions", [rev, p, detail], () => {
+      const d = detail.request || {}, teams = d.teams || [], prs = Object.values(this.data?.prs || {}).filter(x => x.owner === p.owner);
+      const seen = new Set(prs.flatMap(x => [x.author, ...x.reviewers.map(r => r.who)])), asked = new Set(p.requested || []), load = {};
+      for (const x of prs) if (x.state === "OPEN" && !x.merged && !x.draft) for (const r of x.requested || []) load[r] = (load[r] || 0) + 1;
+      const people = [...new Set([...this.people.filter(x => seen.has(x)), ...(d.people || [])])].filter(x => x !== p.author && !teams.includes(x));
+      const item = kind => name => ({ kind, name, asked: asked.has(name), load: load[name] || 0 });
+      return [...teams.map(item("teams")), ...people.map(item("users"))];
+    });
+  },
+  pickerList(p) { const q = this.picker.q.toLowerCase().trim(); return this.reviewOptions(p).filter(it => it.name.toLowerCase().includes(q)); },
+  isPicked(it) { return it.asked || (this.picker[it.kind][it.name] ?? (this.detail.request?.prefs?.[this.picker.owner]?.[it.kind] || []).includes(it.name)); },
+  pickerGreen(p) { return p.ci !== "SUCCESS" && (this.picker.green ?? true); },
+  pickerSlack() { return !!this.cfg.slack && (this.picker.slack ?? !!this.detail.request?.prefs?.[this.picker.owner]?.slack); },
+  requestLabel(p) { return (p.draft ? "Mark ready and request" : "Request") + (this.pickerGreen(p) ? " when green" : " review"); },
+  requestReview(p) {
+    const chosen = this.reviewOptions(p).filter(it => !it.asked && this.isPicked(it)), names = k => chosen.filter(it => it.kind === k).map(it => it.name);
+    return this.act("request", p, { arg: { teams: names("teams"), users: names("users"), green: this.pickerGreen(p), slack: this.pickerSlack() } });
+  },
+  greenText(p) {
+    const r = this.L(p).request_when_green;
+    return r && `Requests review from ${[...r.teams, ...r.users].join(", ")}${r.slack ? " and posts to Slack" : ""} once CI is green` +
+      (r.skip && r.skip === p.head ? " (after the next push: CI was failing when this was set)" : "");
+  },
 
   // ---- selection + batch
   toggle(p, e) {
@@ -563,10 +606,14 @@ Alpine.data("prdash", () => ({
       ...(p ? [
         ...(this.cfg.ai_terminal ? [[`Open in ${this.cfg.ai_name}`, "sparkles", () => this.act("agent", p)]] : []),
         [`${this.cfg.ai_name} review`, "sparkles", () => this.act("review", p)],
+        ...(this.sinceReview(p) ? [[`${this.cfg.ai_name} review of changes since mine`, "sparkles", () => this.act("review", p, { arg: "since" })]] : []),
         ["Open in editor", "code", () => this.act("editor", p)], ["Open terminal", "terminal", () => this.act("terminal", p)],
         ["Create / open worktree", "git-branch", () => this.act("worktree", p)], ["Check out branch in clone", "git-branch", () => this.act("checkout", p)],
         ["Announce in Slack", "hash", () => this.announce(p)], ["Approve", "check", () => this.act("approve", p)],
-        ["Rebase on " + p.base, "refresh-cw", () => this.act("rebase", p)], ["Re-run failed checks", "refresh-cw", () => this.act("rerun", p)],
+        ...(!p.merged && p.state === "OPEN" ? [["Request review", "user-plus", () => this.openPicker(p)]] : []),
+        ["Rebase on " + p.base, "refresh-cw", () => this.act("rebase", p)],
+        ...(p.can_automerge && !p.auto_merge ? [["Merge when ready (press twice)", "git-merge", () => this.act("automerge", p)]] : []),
+        ...(p.auto_merge && p.can_automerge_off ? [["Cancel auto-merge", "x", () => this.act("automerge_off", p)]] : []), ["Re-run failed checks", "refresh-cw", () => this.act("rerun", p)],
         ["Comment", "message-square", () => this.focusComposer()],
         ["Retry failed checks until green", "repeat", () => this.act("retry", p)],
         ...(this.rerequest(p) ? [[`Re-request review from ${this.rerequest(p).who.join(", ")}`, "user-plus", () => this.act("rerequest", p, { arg: this.rerequest(p).who.join(",") })]] : []),
@@ -641,7 +688,7 @@ Alpine.data("prdash", () => ({
       Enter: () => (this.sel = p.url), o: () => (this.sel = p.url), O: () => window.open(p.url, "_blank"),
       x: () => this.toggle(p), c: () => this.cfg.ai_terminal && this.act("agent", p), v: () => this.act("review", p), e: () => this.act("editor", p),
       w: () => this.act("worktree", p), p: () => this.announce(p), a: () => this.act("approve", p), y: () => this.copy(p.url, "Link copied"),
-      z: () => this.snooze(p, 1), h: () => this.setLocal(p, "hidden", !this.L(p).hidden), m: () => this.focusComposer(),
+      q: () => this.openPicker(p), z: () => this.snooze(p, 1), h: () => this.setLocal(p, "hidden", !this.L(p).hidden), m: () => this.focusComposer(),
     };
     const fn = keys[e.key] || prKeys?.[e.key];
     if (fn) { e.preventDefault(); fn(); }

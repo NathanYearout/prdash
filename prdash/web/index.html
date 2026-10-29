@@ -182,13 +182,44 @@
         <button class="btn sm" @click="act('rerequest', pane, { arg: rerequest(pane).who.join(',') })" :disabled="isBusy('rerequest', pane)">
           <svg class="ic"><use href="/static/icons.svg#user-plus"/></svg><span x-text="'Re-request review from ' + (rerequest(pane)?.who || []).join(', ')"></span></button>
       </div>
+      <div class="nudge" x-show="L(pane).request_when_green && !pane.merged">
+        <span x-text="greenText(pane)"></span>
+        <button class="btn sm" @click="setLocal(pane, 'request_when_green', null)">Cancel</button>
+      </div>
 
       <div class="quick">
         <button class="btn primary" x-show="cfg.ai_terminal" @click="act('agent', pane)" title="c"><svg class="ic"><use href="/static/icons.svg#sparkles"/></svg><span x-text="'Open in ' + cfg.ai_name"></span></button>
         <button class="btn" @click="act('review', pane)" :disabled="review(pane).status === 'running'" title="v"><svg class="ic" :class="{ spin: review(pane).status === 'running' }"><use href="/static/icons.svg#sparkles"/></svg><span x-text="review(pane).status === 'running' ? 'Reviewing…' : (review(pane).status ? 'Re-run ' : '') + cfg.ai_name + ' review'"></span></button>
         <button class="btn" @click="announce(pane)" x-show="!pane.merged" title="p"><svg class="ic"><use :href="'/static/icons.svg#' + (cfg.slack ? 'send' : 'hash')"/></svg><span x-text="cfg.slack ? 'Post to ' + (cfg.slack_channel || 'Slack') : 'Copy Slack post'"></span></button>
+        <button class="btn" x-show="!pane.merged && pane.state === 'OPEN'" :class="{ on: picker?.url === pane.url }" @click="picker?.url === pane.url ? (picker = null) : openPicker(pane)" title="q"><svg class="ic"><use href="/static/icons.svg#user-plus"/></svg>Request review</button>
         <a class="btn" :href="pane.url + '/files'" target="_blank"><svg class="ic"><use href="/static/icons.svg#file-diff"/></svg>Files</a>
+        <a class="btn" x-show="sinceReview(pane)" :href="sinceHref(pane)" target="_blank" title="Only the commits since your last review"><svg class="ic"><use href="/static/icons.svg#git-commit-horizontal"/></svg>Since my review</a>
+        <button class="btn" x-show="sinceReview(pane)" @click="act('review', pane, { arg: 'since' })" :disabled="review(pane).status === 'running'" :title="cfg.ai_name + ' reviews only those changes and checks whether your earlier comments were addressed'"><svg class="ic"><use href="/static/icons.svg#sparkles"/></svg>Review changes since mine</button>
       </div>
+
+      <template x-if="picker && picker.url === pane.url">
+        <section class="picker">
+          <h4><svg class="ic"><use href="/static/icons.svg#user-plus"/></svg> Request review
+            <span x-show="cfg.team_view" title="Open, ready PRs in this org currently waiting on each person or team">open requests</span></h4>
+          <input id="picker-q" class="full" x-model="picker.q" placeholder="Search people and teams" spellcheck="false" @keydown.escape.stop="picker = null">
+          <ul class="pick-list">
+            <template x-for="it in pickerList(pane)" :key="it.kind + it.name">
+              <li><label class="toggle" :title="it.asked ? 'Already requested' : ''"><input type="checkbox" :checked="isPicked(it)" :disabled="it.asked" @change="picker[it.kind][it.name] = $event.target.checked">
+                <svg class="ic" x-show="it.kind === 'teams'"><use href="/static/icons.svg#layers"/></svg><img class="av sm" x-show="it.kind === 'users'" :src="avatar(it.name)" alt="" onerror="this.style.visibility='hidden'"><span x-text="it.name"></span></label>
+                <span class="load" x-show="cfg.team_view" :title="it.load + ' open, ready PR' + (it.load === 1 ? '' : 's') + ' in ' + pane.owner + ' waiting on ' + it.name" x-text="it.load"></span></li>
+            </template>
+          </ul>
+          <div class="dim small" x-show="!detail.request && !detail.request_error">Loading teams…</div>
+          <div class="dim small" x-show="detail.request && !pickerList(pane).length">Nobody matches.</div>
+          <div class="err small" x-show="detail.request_error" x-text="detail.request_error"></div>
+          <div class="row tight">
+            <label class="toggle" x-show="pane.ci !== 'SUCCESS'" title="Waits for CI to pass, even across pushes. If it fails, nothing is requested and the inbox says so."><input type="checkbox" :checked="picker.green ?? true" @change="picker.green = $event.target.checked"><span>When CI is green</span></label>
+            <label class="toggle" x-show="cfg.slack && !L(pane).posted"><input type="checkbox" :checked="pickerSlack()" @change="picker.slack = $event.target.checked"><span x-text="'Post to ' + (cfg.slack_channel || 'Slack')"></span></label>
+            <span class="grow"></span>
+            <button class="btn primary" @click="requestReview(pane)" :disabled="isBusy('request', pane)" x-text="requestLabel(pane)"></button>
+          </div>
+        </section>
+      </template>
 
       <template x-for="c in convoDesc()" :key="c.url">
         <section>
@@ -406,6 +437,13 @@
 
       <section x-show="!pane.merged">
         <h4>Manage</h4>
+        <div class="nudge" x-show="pane.blocker">
+          <span x-text="'Can\'t merge yet: ' + pane.blocker"></span>
+          <button class="btn sm" x-show="pane.merge_state === 'BEHIND'" @click="act('rebase', pane)" :disabled="isBusy('rebase', pane)" x-text="'Rebase on ' + pane.base"></button>
+          <button class="btn sm" x-show="pane.blocker === 'Needs approval'" @click="openPicker(pane)">Request review</button>
+          <a class="btn sm" x-show="pane.blocker && pane.merge_state !== 'BEHIND' && pane.blocker !== 'Needs approval'" :href="pane.url + (pane.blocker === 'Required checks' ? '/checks' : '')" target="_blank"
+             x-text="pane.blocker === 'Required checks' ? 'Checks on GitHub' : 'Branch rules on GitHub'"></a>
+        </div>
         <div class="acts">
           <button class="btn" @click="act('rebase', pane)" :disabled="isBusy('rebase', pane)" x-text="'Rebase on ' + pane.base"></button>
           <button class="btn" @click="act(pane.draft ? 'ready' : 'draft', pane)" x-text="pane.draft ? 'Mark ready' : 'Back to draft'"></button>
@@ -413,6 +451,10 @@
         <div class="acts danger-zone">
           <button class="btn go solid" :class="{ armed: armed === 'merge' + pane.url }" @click="act('merge', pane)" :disabled="isBusy('merge', pane)">
             <svg class="ic"><use href="/static/icons.svg#git-merge"/></svg><span x-text="armed === 'merge' + pane.url ? 'Click again to merge' : 'Merge (' + cfg.merge_method + ')'"></span></button>
+          <button class="btn go" x-show="pane.can_automerge && !pane.auto_merge" :class="{ armed: armed === 'automerge' + pane.url }" @click="act('automerge', pane)" :disabled="isBusy('automerge', pane)"
+            :title="'GitHub merges it (' + cfg.merge_method + ') once approvals and required checks pass'"><svg class="ic"><use href="/static/icons.svg#git-merge"/></svg><span x-text="armed === 'automerge' + pane.url ? 'Click again to turn on' : 'Merge when ready'"></span></button>
+          <span class="dim small" x-show="pane.auto_merge" x-text="'Auto-merge on (' + pane.auto_merge?.method + ')'"></span>
+          <button class="btn sm" x-show="pane.auto_merge && pane.can_automerge_off" @click="act('automerge_off', pane)" :disabled="isBusy('automerge_off', pane)">Cancel</button>
           <button class="btn danger" :class="{ armed: armed === 'close' + pane.url }" @click="act('close', pane)" x-text="armed === 'close' + pane.url ? 'Click again to close' : 'Close PR'"></button>
         </div>
       </section>
@@ -607,7 +649,7 @@
         <dt><kbd>p</kbd> <kbd>y</kbd></dt><dd>Announce in Slack · copy link</dd><dt><kbd>a</kbd></dt><dd>Approve (press twice)</dd>
         <dt><kbd>z</kbd> <kbd>h</kbd></dt><dd>Snooze a day · hide</dd><dt><kbd>O</kbd></dt><dd>Open on GitHub</dd>
         <dt><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd></dt><dd>Mine · Review requested · Team</dd><dt><kbd>b</kbd> <kbd>t</kbd></dt><dd>Board · table</dd>
-        <dt><kbd>m</kbd></dt><dd>Comment on the PR</dd><dt><kbd>g</kbd></dt><dd>Color PRs by age</dd>
+        <dt><kbd>m</kbd> <kbd>q</kbd></dt><dd>Comment on the PR · request review</dd><dt><kbd>g</kbd></dt><dd>Color PRs by age</dd>
         <dt><kbd>i</kbd> <kbd>u</kbd> <kbd>s</kbd></dt><dd>Inbox · standup · insights</dd><dt><kbd>,</kbd> <kbd>r</kbd></dt><dd>Settings · sync now</dd>
       </dl>
     </div>

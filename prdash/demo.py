@@ -45,6 +45,10 @@ def make_prs():
             reviewers[0]["state"] = "CHANGES_REQUESTED"
         if author != ME and i % 2:
             reviewers.append({"who": ME, "state": "REQUESTED"})
+        if kind in ("review", "needs_ci") and i % 2:  # the web team is asked on a few, so the request picker shows its load
+            reviewers.append({"who": "web-devs", "state": "REQUESTED"})
+        if i in (2, 4):  # you reviewed these, and they've had new commits since
+            reviewers.append({"who": ME, "state": "CHANGES_REQUESTED" if i == 2 else "COMMENTED", "commit": "f00d" * 10})
         key = f"ENG-{400 + i * 3}" if i % 4 else None
         p = {
             "id": f"DEMO_{i}", "url": f"https://github.com/acme/{repo}/pull/{n}", "number": n,
@@ -63,11 +67,18 @@ def make_prs():
             "head": f"{i:02d}" + "c0ffee" * 6, "pushed": iso(updated), "fixes_pushed": i in (2, 12),
             "first_review": iso(created + timedelta(hours=rnd.uniform(1, 30))) if kind not in ("draft", "review") or i % 3 else None,
             "open_threads": {2: 2, 12: 1, 15: 1, 6: 1}.get(i, 0), "mentions": {},
+            # docs and mobile have no branch protection (merge_state below); one PR waits on auto-merge
+            "auto_merge": {"method": "squash", "by": ME} if i == 6 else None, "can_automerge": not merged and kind != "draft" and i != 6,
+            "can_automerge_off": i == 6,
         }
+        if i == 27:  # approved, still waiting on required checks
+            p["ci"] = "PENDING"
+        p["merge_state"] = ("UNKNOWN" if merged else "DIRTY" if kind == "conflict" else "BEHIND" if i == 8 else "BLOCKED" if i in (18, 27)
+                            else "CLEAN" if repo in ("docs", "mobile") or (kind == "approved" and p["ci"] == "SUCCESS") else "BLOCKED")
         if p["fixes_pushed"]:
             p["reviewers"][0]["state"] = "CHANGES_REQUESTED"
             p["review"] = "CHANGES_REQUESTED"
-        p["status"] = github.status(p)
+        p["status"], p["blocker"] = github.status(p), github.blocker(p)
         prs[p["url"]] = p
     # a three-PR stack in api: each one targets the branch of the one below it
     api = [p for p in prs.values() if p["repo"] == "api" and not p["merged"] and p["author"] == ME][:3]
@@ -109,6 +120,8 @@ def seed():
         "2. No test covers an override lower than the global default.\n\n"
         "Nits:\n- Rename `ovr` to `override` in limits.py:41.\n\n"
         "Verdict: comment. Solid change; fix the cache stampede before merging."))
+    db.put("request_prefs", {"acme": {"teams": ["web-devs"], "users": [], "slack": True}})
+    db.local_update(urls[0], {"request_when_green": {"teams": ["web-devs"], "users": [], "slack": True, "at": time.time(), "skip": None}})
     db.local_update(urls[1], {"retry": {"head": prs[urls[1]]["head"], "attempts": 1, "max": 3, "at": time.time()}})
     db.save_checks([], [(urls[i], f"acme/{prs[urls[i]]['repo']}", name) for i, name in
                         [(1, "CI / unit tests"), (1, "CI / unit tests"), (11, "CI / unit tests"), (4, "CI / e2e"), (14, "CI / e2e"),
@@ -153,6 +166,8 @@ def detail(pr):
     return {"checks": [{"name": f"CI / {n}", "state": s, "url": pr["url"] + "/checks", "run": 1,
                         "flakes": flakes.get((f"acme/{pr['repo']}", f"CI / {n}"), 0)} for n, s in checks],
             "conversation": convo,
+            **({} if pr["merged"] else {"request": {"teams": ["web-devs", "platform", "mobile"], "people": [],
+                                                    "prefs": db.get("request_prefs", {})}}),
             "git": {"clone": f"~/code/{pr['repo']}", "worktree": None, "branch": "main", "dirty": False, "on_pr": False}}
 
 

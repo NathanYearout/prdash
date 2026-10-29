@@ -34,6 +34,21 @@ test("local fields and text", () => {
   assert.ok(m("payment") && m('"payment link"') && !m("refund")); assert.ok(m("dana"), "text searches your note");
   assert.ok(m("label:bug repo:web author:alice"), "terms AND together"); assert.ok(!m("label:bug author:bob"));
 });
+test("new since your review", () => {
+  const p = o => pr({ author: "bob", head: "h2", reviewers: [{ who: "alice", state: "APPROVED", commit: "h1" }], ...o });
+  assert.ok(m("is:new-since-review", p())); assert.ok(!m("is:new-since-review", p({ head: "h1" })), "nothing new");
+  assert.ok(!m("is:new-since-review", p({ author: "alice" })), "not your own"); assert.ok(!m("is:new-since-review", p({ merged: "x" })));
+  assert.ok(!m("is:new-since-review"), "never reviewed");
+});
+test("merge blockers and auto-merge", () => {
+  assert.ok(m("is:blocked", pr({ blocker: "Needs approval" })) && !m("is:blocked"));
+  assert.ok(m("is:behind", pr({ merge_state: "BEHIND" })) && !m("is:behind", pr({ merge_state: "BLOCKED" })));
+  assert.ok(m("is:auto-merge", pr({ auto_merge: { method: "squash" } })) && !m("is:auto-merge"));
+});
+test("review when green", () => {
+  const l = { u1: { request_when_green: { teams: ["devs"], users: [] } } };
+  assert.ok(compile("is:requesting")(pr(), { ...ctx, L: p => l[p.url] || {} })); assert.ok(!m("is:requesting"));
+});
 test("builder helpers", () => {
   assert.equal(setTerm("foo author:a", "author", "b"), "foo author:b");
   assert.equal(setTerm("foo author:a", "author", ""), "foo");

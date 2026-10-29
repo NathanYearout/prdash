@@ -1,5 +1,5 @@
 """GitHub via the `gh` CLI: which PRs belong to each view, their details, CI checks, and PR actions."""
-import json, re, subprocess
+import json, re, subprocess, time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, timedelta
 
@@ -13,16 +13,19 @@ VIEWS = {"mine": "author:@me", "review": "review-requested:@me", "team": ""}
 MENTION = re.compile(r"(?<![\w/])@([A-Za-z0-9](?:[A-Za-z0-9-]{0,38}))")
 FAILED = ("FAILURE", "ERROR", "TIMED_OUT", "STARTUP_FAILURE")
 RUNNING = ("IN_PROGRESS", "QUEUED", "PENDING", "EXPECTED", "WAITING", "REQUESTED")
+PASSED = ("SUCCESS", "NEUTRAL", "SKIPPED")
 
 PR_FIELDS = """
   id url number title isDraft state createdAt updatedAt mergedAt closedAt additions deletions changedFiles
-  headRefName baseRefName mergeable reviewDecision isCrossRepository
+  headRefName baseRefName mergeable mergeStateStatus reviewDecision isCrossRepository
+  autoMergeRequest { mergeMethod enabledBy { login } } viewerCanEnableAutoMerge viewerCanDisableAutoMerge
   author { login } mergedBy { login }
   repository { name owner { login } }
   labels(first: 10) { nodes { name } }
   comments(last: 10) { totalCount nodes { body createdAt author { login } } }
   reviewRequests(first: 10) { nodes { requestedReviewer { ... on User { login } ... on Team { slug } } } }
-  latestReviews(first: 15) { nodes { author { login } state submittedAt } }
+  latestReviews(first: 15) { nodes { author { login } state submittedAt commit { oid } } }
+  latestOpinionatedReviews(first: 15) { nodes { author { login } commit { oid } } }
   reviews(first: 1) { nodes { submittedAt } }
   reviewThreads(first: 100) { nodes { isResolved } }
   commits(last: 1) { nodes { commit { oid committedDate statusCheckRollup { state contexts(first: 60) { nodes { __typename
@@ -88,6 +91,17 @@ def status(p):
     return "in_review"
 
 
+def blocker(p):
+    """Why an open, ready PR can't merge yet, from GitHub's merge state. None when nothing new to say (conflicts are already Needs work)."""
+    if p["merged"] or p["draft"] or p["state"] != "OPEN" or p.get("merge_state") not in ("BEHIND", "BLOCKED"):
+        return None
+    if p["merge_state"] == "BEHIND":
+        return f'Behind {p["base"]}'
+    if p["review"] in ("REVIEW_REQUIRED", "CHANGES_REQUESTED"):
+        return "Needs approval"
+    return "Required checks" if p["ci"] != "SUCCESS" else "Blocked by branch rules"
+
+
 def bump(comments):
     """The latest short "bump" comment ("bump", "friendly bump 🙏", "bumping this"), as {who, at}."""
     hits = [c for c in comments if c and len((c["body"] or "").strip()) <= 40 and BUMP.search(c["body"] or "")]
@@ -136,9 +150,14 @@ def flatten(n):
     head = commits[0]["commit"] if commits else {}
     rollup = head.get("statusCheckRollup")
     reviewed = {r["author"]["login"]: r["state"] for r in n["latestReviews"]["nodes"] if r["author"]}
+    # the commit each person last reviewed: their latest approval or change request, else their latest comment review
+    # (a thread reply is a comment review of its own, so latestReviews alone would move past a real review)
+    at = {r["author"]["login"]: (r.get("commit") or {}).get("oid")
+          for r in n["latestReviews"]["nodes"] + n["latestOpinionatedReviews"]["nodes"] if r["author"]}
     asked = [r["submittedAt"] for r in n["latestReviews"]["nodes"] if r["state"] == "CHANGES_REQUESTED" and r["submittedAt"]]
     requested = [rr["requestedReviewer"] for rr in n["reviewRequests"]["nodes"] if rr["requestedReviewer"]]
     requested = [r.get("login") or r.get("slug") for r in requested]
+    am = n.get("autoMergeRequest")
     p = {
         "id": n["id"], "url": n["url"], "number": n["number"], "title": n["title"], "draft": n["isDraft"],
         "state": n["state"], "repo": n["repository"]["name"], "owner": n["repository"]["owner"]["login"],
@@ -147,6 +166,9 @@ def flatten(n):
         "merged": n["mergedAt"], "merged_by": (n["mergedBy"] or {}).get("login"),
         "adds": n["additions"], "dels": n["deletions"], "files": n["changedFiles"],
         "branch": n["headRefName"], "base": n["baseRefName"], "mergeable": n["mergeable"], "fork": n.get("isCrossRepository", False),
+        "merge_state": n.get("mergeStateStatus"), "can_automerge": n.get("viewerCanEnableAutoMerge", False),
+        "can_automerge_off": n.get("viewerCanDisableAutoMerge", False),
+        "auto_merge": am and {"method": am["mergeMethod"].lower(), "by": (am["enabledBy"] or {}).get("login", "ghost")},
         "review": n["reviewDecision"], "ci": rollup["state"] if rollup else None,
         "labels": [l["name"] for l in n["labels"]["nodes"]],
         "comments": n["comments"]["totalCount"],
@@ -154,7 +176,7 @@ def flatten(n):
         "last_comment": last_comment(n["comments"]["nodes"]),
         "urgent": bool(URGENT.search(n["title"])) or any(URGENT.search(l["name"]) for l in n["labels"]["nodes"]),
         "jira": sorted(set(JIRA_KEY.findall(n["title"] + " " + n["headRefName"]))),
-        "reviewers": [{"who": k, "state": v} for k, v in reviewed.items()]
+        "reviewers": [{"who": k, "state": v, "commit": at.get(k)} for k, v in reviewed.items()]
         + [{"who": r, "state": "REQUESTED"} for r in requested if r not in reviewed],
         "requested": requested,
         "head": head.get("oid"), "pushed": head.get("committedDate"),
@@ -164,7 +186,7 @@ def flatten(n):
         "mentions": mentions(n["comments"]["nodes"]),
         "_checks": [{"name": c["name"], "state": c["state"], "run": c["run"]} for c in contexts(rollup)],
     }
-    p["status"] = status(p)
+    p["status"], p["blocker"] = status(p), blocker(p)
     return p
 
 
@@ -277,15 +299,49 @@ def rerun_failed(url):
     return f"re-running {len(failed)} workflow run(s)"
 
 
+def request(pr, users, teams=()):
+    """Ask people and teams (slugs) to review. GitHub re-notifies someone who already reviewed; a team request stays as it is."""
+    gh("api", "-X", "POST", f'repos/{pr["owner"]}/{pr["repo"]}/pulls/{pr["number"]}/requested_reviewers',
+       *[a for l in users for a in ("-f", f"reviewers[]={l}")], *[a for t in teams for a in ("-f", f"team_reviewers[]={t}")])
+    return "requested review from " + ", ".join([*teams, *users])
+
+
 def rerequest(pr, logins):
-    """Ask these people to review again. GitHub re-notifies someone who already reviewed; a team request stays as it is."""
     known = {r["who"] for r in pr["reviewers"]}
     logins = [l for l in logins if l in known]
     if not logins:
         raise ValueError("Pick someone who's already a reviewer on this PR.")
-    gh("api", "-X", "POST", f'repos/{pr["owner"]}/{pr["repo"]}/pulls/{pr["number"]}/requested_reviewers',
-       *[a for l in logins for a in ("-f", f"reviewers[]={l}")])
+    request(pr, logins)
     return "re-requested review from " + ", ".join(logins)
+
+
+def _daily(key, fetch):
+    hit = db.get(key)
+    if not hit or hit["at"] < time.time() - 86400:
+        hit = {"at": time.time(), "v": fetch()}
+        db.put(key, hit)
+    return hit["v"]
+
+
+def candidates(pr):
+    """Who else GitHub can ask to review: {teams, people}. An org's teams, or the collaborators on a user's repo. Cached a day."""
+    o, repo = pr["owner"], pr["repo"]
+
+    def teams():
+        try:
+            return gh("api", f"orgs/{o}/teams", "--paginate", "--jq", ".[].slug").split()
+        except RuntimeError as e:
+            if "404" not in str(e):
+                raise
+            return None  # a user, not an org
+
+    def people():
+        try:
+            return gh("api", f"repos/{o}/{repo}/collaborators", "--paginate", "--jq", ".[].login").split()
+        except RuntimeError:  # listing them needs push access; the page still offers the people it knows
+            return []
+    t = _daily(f"teams:{o}", teams)
+    return {"teams": t, "people": []} if t is not None else {"teams": [], "people": _daily(f"collaborators:{o}/{repo}", people)}
 
 
 def _thread_of(url, thread):
@@ -319,6 +375,8 @@ ACTIONS = {
     "ready": lambda u, b: ["pr", "ready", u],
     "draft": lambda u, b: ["pr", "ready", u, "--undo"],
     "merge": lambda u, b: ["pr", "merge", u, f"--{config.get('merge_method')}"],
+    "automerge": lambda u, b: ["pr", "merge", u, "--auto", f"--{config.get('merge_method')}"],
+    "automerge_off": lambda u, b: ["pr", "merge", u, "--disable-auto"],
     "close": lambda u, b: ["pr", "close", u, *(["-c", b] if b else [])],
 }
 

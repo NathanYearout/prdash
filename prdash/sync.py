@@ -119,6 +119,7 @@ def record_checks(prs, checks):
                 state = was  # a re-run in progress: remember it failed on this commit until it finishes
             rows.append((repo, p["head"], name, state))
     db.save_checks(rows, flakes)
+    db.put("ci_repos", sorted(set(db.get("ci_repos", [])) | {r[0] for r in rows}))  # check_state only keeps current heads
     return flakes
 
 
@@ -151,7 +152,7 @@ def retries(prs, checks, me, local):
             stop()  # new commits get a fresh CI run of their own
         elif any(c["state"] in github.RUNNING for c in cs) or time.time() - r.get("at", 0) < 90:
             continue  # still running, or the re-run hasn't registered on GitHub yet
-        elif all(c["state"] in ("SUCCESS", "NEUTRAL", "SKIPPED") for c in cs):
+        elif all(c["state"] in github.PASSED for c in cs):
             n = r["attempts"]
             stop("retry_ok", f'CI passed after {n} re-run{"s" * (n != 1)}: {label(p)}' if n else f"CI passed: {label(p)}")
         elif not failed:
@@ -169,6 +170,57 @@ def retries(prs, checks, me, local):
                 continue
             if db.local_get(url).get("retry"):  # not stopped while the re-run request was in flight
                 db.local_update(url, {"retry": {**r, "attempts": r["attempts"] + 1, "at": time.time()}})
+    return events
+
+
+def said(done):
+    return (", ".join(done[:-1]) + " and " if len(done) > 1 else "") + done[-1]
+
+
+def request_now(pr, r):
+    """Mark a draft ready, request review from r's users and teams, then post to Slack if asked and not posted yet.
+    On an error, what already happened stays done and the error says so."""
+    done = []
+    try:
+        if pr["draft"]:
+            github.act("ready", pr["url"])
+            done.append("marked ready")
+        done.append(github.request(pr, r["users"], r["teams"]))
+        if r.get("slack") and not db.local_get(pr["url"]).get("posted"):
+            done.append(integrations.slack_post(pr))
+    except (RuntimeError, ValueError, OSError) as e:  # OSError: Slack unreachable
+        raise RuntimeError((f"{said(done)}, then " if done else "") + f"failed: {str(e).splitlines()[0][:200]}") from None
+    return said(done)
+
+
+def requests_when_green(prs, checks, local):
+    """Request review on armed PRs once CI passes. Waits across pushes; failures on the `skip` head (red when armed) don't count."""
+    events = []
+    for url, p in prs.items():
+        if not local.get(url, {}).get("request_when_green"):
+            continue
+        l = db.local_get(url)  # fresh: you may have cancelled since the sync started
+        r, cs = l.get("request_when_green"), checks.get(url) or []
+        if not r:
+            continue
+        if p["merged"] or p["state"] == "CLOSED":
+            db.local_update(url, {"request_when_green": None})
+            continue
+        # no checks yet: CI hasn't started, unless this repo has never had any
+        if p["head"] == r.get("skip") or any(c["state"] in github.RUNNING for c in cs) or \
+                (not cs and f'{p["owner"]}/{p["repo"]}' in db.get("ci_repos", [])):
+            continue
+        if not all(c["state"] in github.PASSED for c in cs):
+            if not l.get("retry"):  # Retry until green gets its chance first
+                db.local_update(url, {"request_when_green": None})
+                events.append((url, "request_failed", f"CI failed on {label(p)}; didn't request review"))
+            continue
+        db.local_update(url, {"request_when_green": None})
+        try:
+            done = request_now(p, r)
+            events.append((url, "requested", f"{done[0].upper()}{done[1:]}: {label(p)}"))
+        except RuntimeError as e:
+            events.append((url, "request_failed", f"Review request on {label(p)}: {e}"))
     return events
 
 
@@ -233,6 +285,7 @@ def sync_once():
     db.save_views(members, {**keep, **new})
     record_checks(new, checks)
     events += retries(new, checks, me, local)
+    events += requests_when_green(new, checks, local)
     if not config.get("team_view"):
         db.save_views({"team": []}, {})
     prs = {**keep, **new}
