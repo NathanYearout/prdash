@@ -319,7 +319,7 @@ Alpine.data("prdash", () => ({
     if (p.mergeable === "CONFLICTING") f.push(["Conflicts", "red", "triangle-alert", `Merge conflicts with ${p.base}`]);
     if (this.sinceReview(p) && !panel) f.push(["New since your review", "amber", "git-commit-horizontal", "Commits since your last review: opens just those changes", this.sinceHref(p)]);
     else if (p.fixes_pushed && !p.merged) f.push(["New commits", "amber", "git-commit-horizontal", "New commits since changes were requested: ready for another look"]);
-    if (p.blocker && !panel) f.push([p.blocker, "muted", "hourglass", `Can't merge yet: ${p.blocker}`]);
+    if (p.blocker && p.blocker !== "Needs approval" && !panel) f.push([p.blocker, "muted", "hourglass", `Can't merge yet: ${p.blocker}`]);
     if (p.auto_merge && !p.merged && !panel) f.push(["Auto-merge", "green", "git-merge", `Merges itself (${p.auto_merge.method}) once it's ready; turned on by ${p.auto_merge.by}`]);
     if (p.open_threads && !p.merged && !panel) f.push([`${p.open_threads} open`, "muted", "message-square", `${p.open_threads} unresolved review thread${p.open_threads > 1 ? "s" : ""}`]);
     if (this.L(p).request_when_green && !p.merged && !panel) f.push(["Review when green", "amber", "user-plus", this.greenText(p)]);
@@ -425,15 +425,15 @@ Alpine.data("prdash", () => ({
     const { rev, detail } = this;
     return memo("reviewOptions", [rev, p, detail], () => {
       const d = detail.request || {}, teams = d.teams || [], prs = Object.values(this.data?.prs || {}).filter(x => x.owner === p.owner);
-      const seen = new Set(prs.flatMap(x => [x.author, ...x.reviewers.map(r => r.who)])), asked = new Set(p.requested || []), load = {};
+      const seen = new Set(prs.flatMap(x => [x.author, ...x.reviewers.filter(r => !r.team).map(r => r.who)])), asked = new Set(p.requested || []), load = {};
       for (const x of prs) if (x.state === "OPEN" && !x.merged && !x.draft) for (const r of x.requested || []) load[r] = (load[r] || 0) + 1;
       const people = [...new Set([...this.people.filter(x => seen.has(x)), ...(d.people || [])])].filter(x => x !== p.author && !teams.includes(x));
       const item = kind => name => ({ kind, name, asked: asked.has(name), load: load[name] || 0 });
       return [...teams.map(item("teams")), ...people.map(item("users"))];
     });
   },
-  pickerList(p) { const q = this.picker.q.toLowerCase().trim(); return this.reviewOptions(p).filter(it => it.name.toLowerCase().includes(q)); },
-  isPicked(it) { return it.asked || (this.picker[it.kind][it.name] ?? (this.detail.request?.prefs?.[this.picker.owner]?.[it.kind] || []).includes(it.name)); },
+  pickerList(p) { const q = (this.picker?.q || "").toLowerCase().trim(); return this.reviewOptions(p).filter(it => it.name.toLowerCase().includes(q)); },
+  isPicked(it) { return it.asked || (this.picker?.[it.kind][it.name] ?? (this.detail.request?.prefs?.[this.picker?.owner]?.[it.kind] || []).includes(it.name)); },
   pickerGreen(p) { return p.ci !== "SUCCESS" && (this.picker.green ?? true); },
   pickerSlack() { return !!this.cfg.slack && (this.picker.slack ?? !!this.detail.request?.prefs?.[this.picker.owner]?.slack); },
   requestLabel(p) { return (p.draft ? "Mark ready and request" : "Request") + (this.pickerGreen(p) ? " when green" : " review"); },
@@ -663,7 +663,7 @@ Alpine.data("prdash", () => ({
     }
     if (e.key === "Escape") {
       if (typing) return document.activeElement.blur();
-      return this.panel ? (this.panel = null) : this.sel ? (this.sel = null) : this.builderOpen ? (this.builderOpen = false) : this.clearPicked();
+      return this.panel ? (this.panel = null) : this.picker ? (this.picker = null) : this.sel ? (this.sel = null) : this.builderOpen ? (this.builderOpen = false) : this.clearPicked();
     }
     if (typing || e.ctrlKey || e.metaKey || e.altKey) return;
     const p = this.cur || this.data?.prs[this.focus];

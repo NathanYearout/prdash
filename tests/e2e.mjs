@@ -8,7 +8,8 @@ const URL = process.argv[2] || "http://127.0.0.1:8766/";
 const OUT = new globalThis.URL("./out/shots/", import.meta.url).pathname;
 mkdirSync(OUT, { recursive: true });
 const browser = process.env.CHROME || "chromium-browser";
-const chrome = spawn(browser, ["--headless=new", "--remote-debugging-port=9334", "--window-size=1600,1000",
+const CDP = process.env.CDP_PORT || 9334; // another checkout's e2e run can hold the default
+const chrome = spawn(browser, ["--headless=new", `--remote-debugging-port=${CDP}`, "--window-size=1600,1000",
   `--user-data-dir=${OUT}/../profile`, "about:blank"], { stdio: "ignore" });
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -16,7 +17,7 @@ let ws;
 for (let i = 0; i < 60 && !ws; i++) {
   await sleep(250);
   try {
-    const page = (await (await fetch("http://127.0.0.1:9334/json")).json()).find(t => t.type === "page");
+    const page = (await (await fetch(`http://127.0.0.1:${CDP}/json`)).json()).find(t => t.type === "page");
     if (page) ws = new WebSocket(page.webSocketDebuggerUrl);
   } catch {}
 }
@@ -161,7 +162,7 @@ await app(`(a.scope = "team", a.preset = "open", a.q = "is:new-since-review", a.
 check("is:new-since-review chip links to the changes since", (await app("a.list.length")) > 0 &&
   await js(`[...document.querySelectorAll(".board a.chip.flag")].some(c => /\\/files\\/\\w+\\.\\.\\w+$/.test(c.href))`));
 await app(`a.sel = a.list[0].url`); await sleep(300);
-check("panel offers a review of changes since yours", await js(`[...document.querySelectorAll(".quick .btn")].some(b => b.offsetParent && b.textContent.includes("since mine"))`));
+check("panel offers a review of changes since yours", await js(`[...document.querySelectorAll(".nudge .btn")].some(b => b.offsetParent && b.textContent.includes("Review them"))`));
 await shot("13c-new-since-review");
 // why a PR can't merge: a chip on the card, and the fix next to it in the panel; auto-merge where GitHub allows it
 await app(`(a.q = "is:behind", a.sel = null)`); await sleep(200);

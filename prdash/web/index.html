@@ -187,14 +187,17 @@
         <button class="btn sm" @click="setLocal(pane, 'request_when_green', null)">Cancel</button>
       </div>
 
+      <div class="nudge" x-show="sinceReview(pane)">
+        <span>New commits since your last review</span>
+        <a class="btn sm" x-show="sinceReview(pane)" :href="sinceHref(pane)" target="_blank" title="Only the commits since your last review"><svg class="ic"><use href="/static/icons.svg#git-commit-horizontal"/></svg>View changes</a>
+        <button class="btn sm" x-show="sinceReview(pane)" @click="act('review', pane, { arg: 'since' })" :disabled="review(pane).status === 'running'" :title="cfg.ai_name + ' reviews only those changes and checks whether your earlier comments were addressed'"><svg class="ic"><use href="/static/icons.svg#sparkles"/></svg>Review them</button>
+      </div>
       <div class="quick">
         <button class="btn primary" x-show="cfg.ai_terminal" @click="act('agent', pane)" title="c"><svg class="ic"><use href="/static/icons.svg#sparkles"/></svg><span x-text="'Open in ' + cfg.ai_name"></span></button>
         <button class="btn" @click="act('review', pane)" :disabled="review(pane).status === 'running'" title="v"><svg class="ic" :class="{ spin: review(pane).status === 'running' }"><use href="/static/icons.svg#sparkles"/></svg><span x-text="review(pane).status === 'running' ? 'Reviewing…' : (review(pane).status ? 'Re-run ' : '') + cfg.ai_name + ' review'"></span></button>
         <button class="btn" @click="announce(pane)" x-show="!pane.merged" title="p"><svg class="ic"><use :href="'/static/icons.svg#' + (cfg.slack ? 'send' : 'hash')"/></svg><span x-text="cfg.slack ? 'Post to ' + (cfg.slack_channel || 'Slack') : 'Copy Slack post'"></span></button>
         <button class="btn" x-show="!pane.merged && pane.state === 'OPEN'" :class="{ on: picker?.url === pane.url }" @click="picker?.url === pane.url ? (picker = null) : openPicker(pane)" title="q"><svg class="ic"><use href="/static/icons.svg#user-plus"/></svg>Request review</button>
         <a class="btn" :href="pane.url + '/files'" target="_blank"><svg class="ic"><use href="/static/icons.svg#file-diff"/></svg>Files</a>
-        <a class="btn" x-show="sinceReview(pane)" :href="sinceHref(pane)" target="_blank" title="Only the commits since your last review"><svg class="ic"><use href="/static/icons.svg#git-commit-horizontal"/></svg>Since my review</a>
-        <button class="btn" x-show="sinceReview(pane)" @click="act('review', pane, { arg: 'since' })" :disabled="review(pane).status === 'running'" :title="cfg.ai_name + ' reviews only those changes and checks whether your earlier comments were addressed'"><svg class="ic"><use href="/static/icons.svg#sparkles"/></svg>Review changes since mine</button>
       </div>
 
       <template x-if="picker && picker.url === pane.url">
