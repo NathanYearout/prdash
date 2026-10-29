@@ -143,7 +143,8 @@
   <button class="btn" @click="batchLocal({ snooze: new Date(Date.now() + 864e5).toISOString().slice(0, 10) })">Snooze 1d</button>
   <button class="btn" @click="batchLocal({ snooze: new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10) })">1w</button>
   <button class="btn" x-show="tagging === null" @click="tagging = ''; $nextTick(() => $refs.tagging.focus())">Tag</button>
-  <input class="naming" x-ref="tagging" x-show="tagging !== null" x-model="tagging" placeholder="tag, Enter" @keydown.enter="batchTag(tagging)" @keydown.escape.stop="tagging = null" @blur="tagging = null">
+  <input class="naming" x-ref="tagging" x-show="tagging !== null" x-model="tagging" list="dl-tags" placeholder="tag, Enter" @keydown.enter="batchTag(tagging)" @input="!$event.inputType || $event.inputType === 'insertReplacementText' ? batchTag($event.target.value) : null" @keydown.escape.stop="tagging = null" @blur="tagging = null">
+  <datalist id="dl-tags"><template x-for="t in allTags" :key="t"><option :value="t"></option></template></datalist>
   <button class="btn" @click="batchLocal({ posted: new Date().toISOString() })">Mark posted</button>
   <button class="btn" @click="batchLocal({ hidden: true })">Hide</button>
   <button class="icon-btn" @click="clearPicked()" title="Clear selection (esc)"><svg class="ic"><use href="/static/icons.svg#x"/></svg></button>
@@ -434,7 +435,12 @@
           <input type="date" class="sm" :value="L(pane).snooze || ''" @change="setLocal(pane, 'snooze', $event.target.value || null)">
           <button class="btn sm" x-show="L(pane).snooze" @click="snooze(pane, 0)">Wake</button>
         </div>
-        <input class="full" placeholder="Tags, comma separated: blocked, waiting-qa" :value="L(pane).tags || ''" @change="setLocal(pane, 'tags', $event.target.value.trim() || null)">
+        <div class="row tight tag-edit">
+          <template x-for="t in tags(pane)" :key="t">
+            <span class="chip tag" :style="tagStyle(t)"><span x-text="t"></span><button @click="setTags(pane, tags(pane).filter(x => x !== t))" :title="'Remove ' + t"><svg class="ic"><use href="/static/icons.svg#x"/></svg></button></span>
+          </template>
+          <input list="dl-tags" placeholder="Add tag…" @change="tagInput(pane, $event)" @input="tagInput(pane, $event)">
+        </div>
         <textarea class="full" rows="3" placeholder="Note to self" :value="L(pane).note || ''" @change="setLocal(pane, 'note', $event.target.value.trim() || null)"></textarea>
       </section>
 

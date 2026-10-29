@@ -69,6 +69,8 @@ const PERSISTED = ["scope", "preset", "layout", "q", "sort", "dir", "showHidden"
 const AGE_MAX = 180;
 const clamp01 = x => Math.max(0, Math.min(1, x));
 const pct = x => `${Math.round(clamp01(x) * 100)}%`;
+const splitTags = s => (s || "").split(",").map(t => t.trim()).filter(Boolean);
+const hue = s => [...s].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 0); // stable color per name
 function heatStyle(days) {
   const t = clamp01(Math.log2(1 + days) / Math.log2(1 + AGE_MAX));
   return `--a:${pct(t / .4)};--b:${pct((t - .4) / .26)};--tint:${Math.round(clamp01((t - .66) / .34) * 18)}%`;
@@ -238,6 +240,7 @@ Alpine.data("prdash", () => ({
     return Object.keys(n).filter(x => x !== "ghost" && !x.endsWith("[bot]")).sort((a, b) => n[b] - n[a] || a.localeCompare(b));
   },
   get repos() { return [...new Set(Object.values(this.data?.prs || {}).map(p => p.repo))].sort(); },
+  get allTags() { return [...new Set(Object.values(this.local || {}).flatMap(l => splitTags(l.tags)))].sort(); },
   // open PRs by "owner/repo:branch", for stacks: a PR whose base is another open PR's branch sits on top of it
   get heads() {
     const { rev } = this;
@@ -318,13 +321,14 @@ Alpine.data("prdash", () => ({
     const d = (this.now - new Date(t)) / DAY;
     return d < 1 / 24 ? Math.max(1, Math.round(d * 1440)) + "m" : d < 1 ? Math.round(d * 24) + "h" : Math.round(d) + "d";
   },
-  tags(p) { return (this.L(p).tags || "").split(",").map(t => t.trim()).filter(Boolean); },
+  tags(p) { return splitTags(this.L(p).tags); },
+  tagStyle(t) { return `--h:${hue(t)}`; },
   statusLabel(k) { return STATUSES.find(s => s.key === k)?.label; },
   reviewLabel(p) { return { APPROVED: "Approved", CHANGES_REQUESTED: "Changes", REVIEW_REQUIRED: "Needed" }[p.review] || "—"; },
   avatar(login) {
     if (!this.cfg.demo) return `https://github.com/${encodeURIComponent(login)}.png?size=48`;
-    const hue = [...login].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 0); // demo: initials, no real people
-    return `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><rect width="20" height="20" fill="hsl(${hue},45%,45%)"/><text x="10" y="14" font-size="9" font-family="sans-serif" fill="white" text-anchor="middle">${login.slice(0, 2).toUpperCase()}</text></svg>`)}`;
+    // demo: initials, no real people
+    return `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><rect width="20" height="20" fill="hsl(${hue(login)},45%,45%)"/><text x="10" y="14" font-size="9" font-family="sans-serif" fill="white" text-anchor="middle">${login.slice(0, 2).toUpperCase()}</text></svg>`)}`;
   },
   jiraHref(k) { return this.cfg.jira_url ? `${this.cfg.jira_url}/browse/${k}` : null; },
   // [short, tone, icon, sentence, link]: why it's in Needs work, plus workflow nudges. The panel skips the ones its own sections show.
@@ -379,6 +383,14 @@ Alpine.data("prdash", () => ({
   async setLocal(p, field, value) {
     try { const r = await api("/api/local", { url: p.url, fields: { [field]: value } }); LOCAL[p.url] = r.local; this.rev++; }
     catch (e) { this.toast(e.message, true); }
+  },
+  setTags(p, tags) { return this.setLocal(p, "tags", tags.join(", ") || null); },
+  addTags(p, text) { return this.setTags(p, [...new Set([...this.tags(p), ...splitTags(text)])]); },
+  // The tag input adds on Enter/blur (change) or on picking a datalist option (input without typed text)
+  tagInput(p, e) {
+    if (e.type === "input" && e.inputType && e.inputType !== "insertReplacementText") return;
+    const t = e.target.value; e.target.value = "";
+    if (t.trim()) this.addTags(p, t);
   },
   snooze(p, days) { this.setLocal(p, "snooze", days ? plusDays(days) : null); if (days) this.toast(`Snoozed until ${plusDays(days)}`); },
   async copy(text, msg) {
@@ -528,7 +540,7 @@ Alpine.data("prdash", () => ({
     t = (t || "").trim(); this.tagging = null;
     if (!t) return;
     const urls = this.pickedUrls;
-    await Promise.all(urls.map(u => this.setLocal({ url: u }, "tags", [...new Set([...this.tags({ url: u }), t])].join(", "))));
+    await Promise.all(urls.map(u => this.addTags({ url: u }, t)));
     this.toast(`Tagged ${urls.length} with ${t}`);
   },
 
