@@ -298,6 +298,20 @@ class Inbox(unittest.TestCase):
             db.local_update(u, {"request_when_green": None, "retry": None})
             db.put("ci_repos", None)
 
+    def test_armed_pr_off_the_board_is_still_checked(self):
+        u, asked = NODE["url"], []
+        real = github.viewer, github.membership, github.fetch
+        github.viewer, github.membership = lambda: "me", lambda view: ([], [])
+        github.fetch = lambda ids: asked.extend(ids) or {u: pr(state="CLOSED", _checks=[])}
+        try:
+            db.local_update(u, {"request_when_green": {"teams": ["devs"], "users": [], "slack": False, "skip": None, "id": "PR_1"}})
+            sync.sync_once()
+            self.assertEqual(asked, ["PR_1"], "fetched by id though no view has it")
+            self.assertFalse(db.local_get(u).get("request_when_green"), "closed: disarmed")
+            self.assertNotIn(u, db.all_prs()[0], "not added to the board")
+        finally:
+            github.viewer, github.membership, github.fetch = real
+
     def test_diff_ignores_others_and_new(self):
         u = NODE["url"]
         self.assertEqual(sync.diff({u: pr(author="bob")}, {u: pr(author="bob", ci="FAILURE")}, "me", set(), set()), [])

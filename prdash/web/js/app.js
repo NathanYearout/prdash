@@ -160,8 +160,8 @@ Alpine.data("prdash", () => ({
   },
   async loadDetail(url) {
     this.detailFor = url;
-    try { const d = await api(`/api/detail?url=${encodeURIComponent(url)}`); if (this.detailFor === url) this.detail = d; }
-    catch (e) { if (this.detailFor === url) this.detail = { error: e.message }; }
+    try { const d = await api(`/api/detail?url=${encodeURIComponent(url)}`); if (this.detailFor === url) this.detail = { ...d, url }; }
+    catch (e) { if (this.detailFor === url) this.detail = { error: e.message, url }; }
   },
   sync() { api("/api/sync", {}).catch(e => this.toast(e.message, true)); this.status.syncing = true; },
 
@@ -444,6 +444,7 @@ Alpine.data("prdash", () => ({
 
   // ---- request review: a picker in the panel. Defaults come from what's already requested and what you last picked
   // for this owner (detail.request.prefs, by owner so a still-loading panel can't carry another org's picks); picker only holds what you changed.
+  // detail.url says which PR the loaded detail is for, so the previous PR's teams don't flash while the next one loads.
   openPicker(p) {
     if (!p || p.merged || p.state !== "OPEN") return;
     this.sel = p.url; this.picker = { url: p.url, owner: p.owner, q: "", teams: {}, users: {}, green: null, slack: null };
@@ -454,7 +455,7 @@ Alpine.data("prdash", () => ({
   reviewOptions(p) {
     const { rev, detail } = this;
     return memo("reviewOptions", [rev, p, detail], () => {
-      const d = detail.request || {}, teams = d.teams || [], prs = Object.values(this.data?.prs || {}).filter(x => x.owner === p.owner);
+      const d = (detail.url === p.url && detail.request) || {}, teams = d.teams || [], prs = Object.values(this.data?.prs || {}).filter(x => x.owner === p.owner);
       const seen = new Set(prs.flatMap(x => [x.author, ...x.reviewers.filter(r => !r.team).map(r => r.who)])), asked = new Set(p.requested || []), load = {};
       for (const x of prs) if (x.state === "OPEN" && !x.merged && !x.draft) for (const r of x.requested || []) load[r] = (load[r] || 0) + 1;
       const people = [...new Set([...this.people.filter(x => seen.has(x)), ...(d.people || [])])].filter(x => x !== p.author && !teams.includes(x));

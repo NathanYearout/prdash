@@ -212,9 +212,9 @@
                 <span class="load" x-show="cfg.team_view" :title="it.load + ' open, ready PR' + (it.load === 1 ? '' : 's') + ' in ' + pane.owner + ' waiting on ' + it.name" x-text="it.load"></span></li>
             </template>
           </ul>
-          <div class="dim small" x-show="!detail.request && !detail.request_error">Loading teams…</div>
-          <div class="dim small" x-show="detail.request && !pickerList(pane).length">Nobody matches.</div>
-          <div class="err small" x-show="detail.request_error" x-text="detail.request_error"></div>
+          <div class="dim small" x-show="detail.url !== pane.url || !detail.request && !detail.request_error">Loading teams…</div>
+          <div class="dim small" x-show="detail.url === pane.url && detail.request && !pickerList(pane).length">Nobody matches.</div>
+          <div class="err small" x-show="detail.url === pane.url && detail.request_error" x-text="detail.request_error"></div>
           <div class="row tight">
             <label class="toggle" x-show="pane.ci !== 'SUCCESS'" title="Waits for CI to pass, even across pushes. If it fails, nothing is requested and the inbox says so."><input type="checkbox" :checked="picker.green ?? true" @change="picker.green = $event.target.checked"><span>When CI is green</span></label>
             <label class="toggle" x-show="cfg.slack && !L(pane).posted"><input type="checkbox" :checked="pickerSlack()" @change="picker.slack = $event.target.checked"><span x-text="'Post to ' + (cfg.slack_channel || 'Slack')"></span></label>
