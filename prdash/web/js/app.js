@@ -18,6 +18,24 @@ const PRESETS = {
   complete: { label: "Complete", statuses: ["approved", "merged"] },
   all: { label: "All", statuses: null },
 };
+// Notification chimes, synthesized so there are no audio files: soft sine plucks, notes in Hz.
+const CHIMES = { urgent: [988, 988], bad: [659, 523], good: [784, 1047], ping: [880] };
+const CHIME_OF = { urgent: "urgent", ci_failed: "bad", conflict: "bad", retry_failed: "bad", request_failed: "bad", closed: "bad",
+                   merged: "good", ci_passed: "good", retry_ok: "good", requested: "good" };
+let audio;
+function chime(kind, at = 0) {
+  audio ||= new AudioContext();
+  audio.resume(); // browsers start it suspended until the page has had a click
+  CHIMES[kind].forEach((f, i) => {
+    const o = audio.createOscillator(), g = audio.createGain(), t = audio.currentTime + at + i * 0.09;
+    o.frequency.value = f;
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.3, t + 0.008);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.4);
+    o.connect(g).connect(audio.destination);
+    o.start(t); o.stop(t + 0.45);
+  });
+}
 const SCOPES = { mine: "Mine", review: "Review requested", team: "Team" };
 // Swatch previews for the theme picker: [label, background, card, accent, text]. Full palettes live in style.css.
 const THEMES = {
@@ -547,6 +565,8 @@ Alpine.data("prdash", () => ({
     else this.toast("That PR is no longer in your views.");
   },
   notify(events) {
+    // one chime per sync, for the loudest kind in it
+    if (this.cfg.notify_sound) chime(Object.keys(CHIMES).find(k => events.some(ev => (CHIME_OF[ev.kind] || "ping") === k)));
     if (!this.cfg.notify_browser || !("Notification" in window) || Notification.permission !== "granted") return;
     events.slice(0, 3).forEach(ev => {
       const n = new Notification(ev.kind === "urgent" ? "prdash: urgent" : "prdash", { body: ev.text, tag: ev.url + ev.kind,
@@ -554,6 +574,7 @@ Alpine.data("prdash", () => ({
       n.onclick = () => { window.focus(); if (ev.url) this.sel = ev.url; };
     });
   },
+  previewChimes() { Object.keys(CHIMES).forEach((k, i) => chime(k, i * 0.6)); },
   async askNotify() { const p = await Notification.requestPermission(); this.notifyPermission = p; this.toast(p === "granted" ? "Desktop notifications on" : "Notifications blocked by the browser", p !== "granted"); },
   async openSettings() {
     this.panel = "settings";

@@ -81,6 +81,7 @@ FIELDS = {
     "auto_update": (True, "bool", "GitHub", "Update on start",
                     "Pull the latest prdash when it starts (skipped if your checkout has local changes)."),
     "notify_browser": (True, "bool", "Notifications", "Browser notifications", "While a prdash tab is open."),
+    "notify_sound": (True, "bool", "Notifications", "Sounds", "A chime on new inbox items while a prdash tab is open."),
     "notify_cmd": (default_notify, "str", "Notifications", "System notification command",
                    "Runs for every inbox item, even with no prdash tab open. {text} is the message. Clear it to turn off."),
     "slack_token": ("", "secret", "Slack", "User token",
