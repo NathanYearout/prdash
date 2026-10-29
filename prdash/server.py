@@ -160,10 +160,13 @@ def start_retry(pr):
     head, cs = github.checks_at(pr["url"])
     failed = github.failed_runs(cs)
     r = {"head": head, "attempts": 0, "max": max(1, min(10, config.get("retry_max")))}
-    if failed:
+    running = any(c["state"] in github.RUNNING for c in cs)  # GitHub won't re-run a workflow that's still going
+    if failed and not running:
         github.rerun_runs(pr["url"], failed)
         r.update(attempts=1, at=time.time())
     db.local_update(pr["url"], {"retry": r, "retry_done": None})
+    if running:
+        return f'will re-run failed jobs once the running checks finish, up to {r["max"]} re-runs'
     return f'retrying until green, up to {r["max"]} re-runs' if failed else "will re-run failed jobs until green"
 
 
