@@ -274,6 +274,13 @@ class Inbox(unittest.TestCase):
             self.assertEqual([k for _, k, _ in step(["FAILURE", "SUCCESS"])], ["retrying"], "two flakes: auto-retry kicks in")
             server.stop_retry({**p, "url": u})
             self.assertEqual(step(["FAILURE", "SUCCESS"]), [], "Stop sticks for this commit even with auto-retry on")
+            n, real_at = len(reruns), github.checks_at
+            github.checks_at = lambda url: ("h1", run("FAILURE", "IN_PROGRESS")[u])
+            self.assertIn("once the running checks finish", server.start_retry({**p, "url": u}))
+            self.assertEqual(len(reruns), n, "doesn't re-run while the workflow is still going")
+            self.assertEqual(db.local_get(u)["retry"]["attempts"], 0)
+            self.assertEqual(step(["FAILURE", "SUCCESS"]), []); self.assertEqual(len(reruns), n + 1, "re-runs once it finishes")
+            github.checks_at = real_at
         finally:
             github.rerun_runs = real
             config.put("retry_flaky", None)
