@@ -153,6 +153,46 @@ class Inbox(unittest.TestCase):
         db.put("viewer", "me")
         with self.assertRaisesRegex(ValueError, "your own PRs"):
             local.fix(pr(author="bob"), [{"what": "thread", "resolved": False}])
+        convo = [{"who": "alice", "what": "commented", "text": "rename this"}, {"who": "me", "what": "commented", "text": "done"},
+                 {"who": "bob", "what": "reviewed", "text": "nit: typo"}, {"who": "alice", "what": "approved", "text": ""},
+                 {"who": "me", "what": "opened", "text": "my description"}]
+        seen, saved = [], (local.worktree, local.launch, local.ai.interactive)
+        local.worktree, local.launch = (lambda p: "/tmp"), (lambda argv, cwd: None)
+        local.ai.interactive = lambda prompt, cwd, edit=False: seen.append(prompt) or ["true"]
+        try:
+            self.assertIn("2 pieces", local.fix(pr(author="me"), convo))
+        finally:
+            local.worktree, local.launch, local.ai.interactive = saved
+        self.assertIn("alice commented:\nrename this", seen[0])
+        self.assertIn("bob reviewed:\nnit: typo", seen[0])
+        self.assertNotIn("done", seen[0].split("REVIEW FEEDBACK")[1])
+
+    def test_worktree_resets_a_rebased_branch_but_never_loses_commits(self):
+        from prdash import local
+        d, b = tempfile.mkdtemp(), "fix/ABC-12-thing"
+        sh = lambda *a, cwd=d: local.git(*a, cwd=cwd)
+        sh("init", "-q", "--bare", "origin.git")
+        sh("clone", "-q", "origin.git", "a")
+        a, wt = f"{d}/a", f"{d}/wt"
+        for args in [("commit", "-q", "--allow-empty", "-m", "base"), ("checkout", "-q", "-b", b),
+                     ("commit", "-q", "--allow-empty", "-m", "v1"), ("push", "-q", "origin", "HEAD:main", b),
+                     ("commit", "-q", "--amend", "--allow-empty", "-m", "v1 rebased"),
+                     ("push", "-q", "-f", "origin", b)]:
+            sh("-c", "user.name=t", "-c", "user.email=t@t", *args, cwd=a)
+        sh("clone", "-q", "origin.git", "wt")
+        sh("branch", "-q", b, "origin/main", cwd=wt)  # stale local copy, nothing GitHub lacks
+        calls, local.gh = [], lambda *a, cwd=None: calls.append(a)
+        try:
+            local.checkout_latest(pr(), wt)
+            sh("checkout", "-q", b, cwd=wt)
+            open(f"{wt}/f", "w").write("unpushed work")
+            sh("add", "f", cwd=wt)
+            sh("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "local only", cwd=wt)
+            sh("checkout", "-q", "--detach", cwd=wt)  # now the local copy has a commit GitHub doesn't
+            local.checkout_latest(pr(), wt)
+        finally:
+            local.gh = github.gh
+        self.assertEqual([c[-1] for c in calls], ["--force", "1"])
 
     def test_review_since_your_last_review(self):
         from prdash import ai, local
