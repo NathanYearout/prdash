@@ -88,14 +88,38 @@ def checkout(pr):
 
 
 def worktree(pr):
-    wt = worktree_dir(pr)
-    if not (wt / ".git").exists():
-        cwd = need(clone_dir(pr))
-        wt.parent.mkdir(parents=True, exist_ok=True)
-        git("fetch", "--quiet", "origin", cwd=cwd)
-        git("worktree", "add", "--detach", str(wt), cwd=cwd)
-        gh("pr", "checkout", str(pr["number"]), cwd=wt)  # also handles PRs from forks
+    """The PR's worktree, on its latest push. One with uncommitted changes is left exactly as it is."""
+    wt, cwd = worktree_dir(pr), need(clone_dir(pr))
+    git("fetch", "--quiet", "origin", cwd=cwd)
+    if (wt / ".git").exists():
+        if not git("status", "--porcelain", "--untracked-files=no", cwd=wt):
+            checkout_latest(pr, wt)
+        return str(wt)
+    wt.parent.mkdir(parents=True, exist_ok=True)
+    git("worktree", "add", "--detach", str(wt), cwd=cwd)
+    try:
+        checkout_latest(pr, wt)
+    except Exception:
+        git("worktree", "remove", "--force", str(wt), cwd=cwd)  # a half-made worktree would be reused next time
+        raise
     return str(wt)
+
+
+def checkout_latest(pr, wt):
+    """Put wt on the PR's branch at its latest push (gh also handles forks). Your local copy of the branch is reset only
+    when every commit on it is also on GitHub, matched by patch so a rebased-and-force-pushed branch still counts."""
+    b = pr["branch"]
+    try:
+        safe = "+" not in git("cherry", f"origin/{b}", b, cwd=wt)
+    except RuntimeError:  # no local copy yet, or the branch isn't on origin
+        safe = False
+    try:
+        gh("pr", "checkout", str(pr["number"]), *(["--force"] if safe else []), cwd=wt)
+    except RuntimeError as e:
+        if "fast-forward" not in str(e):
+            raise
+        raise ValueError(f"Your local {b} has commits that aren't on GitHub, and the PR was rebased or force-pushed "
+                         f"since. Reconcile them in {wt} (git cherry -v origin/{b} shows which), then try again.") from e
 
 
 def worktree_remove(pr):
@@ -139,16 +163,19 @@ def fix(pr, conversation):
     if pr["author"] != viewer():
         raise ValueError("Fix with AI only works on your own PRs.")
     threads = [t for t in conversation if t["what"] == "thread" and not t["resolved"]]
-    asks = [c for c in conversation if c["what"] == "requested changes" and c["text"]]
+    # comments and review bodies from everyone but you; unlike threads they can't be resolved, so some may be done already
+    asks = [c for c in conversation if c["what"] in ("requested changes", "reviewed", "approved", "commented")
+            and c["text"] and c["who"] != pr["author"]]
     if not threads and not asks:
-        raise ValueError("No unresolved review comments on this PR.")
+        raise ValueError("No unresolved review feedback on this PR.")
     feedback = "\n\n".join(
-        [f'{c["who"]} requested changes:\n{c["text"]}' for c in asks] + [thread_text(t) for t in threads])
+        [f'{c["who"]} {c["what"]}:\n{c["text"]}' for c in asks] + [thread_text(t) for t in threads])
     if len(feedback) > 40_000:
         feedback = feedback[:40_000] + "\n[more feedback truncated; see the PR on GitHub]"
     cwd = Path(worktree(pr))
     prompt = (f"You're in a worktree for {pr['url']} ({pr['title']}), on its branch. Reviewers left the feedback below. "
               "Go through it one item at a time: make the change if it's right, or tell me why you'd push back. "
+              "General comments can't be marked resolved, so skip any the code already addresses, and ignore bot noise. "
               "Don't commit or push; I'll review your changes first. Finish with a short list of what you did for each item. "
               f"{UNTRUSTED}\n\n===== REVIEW FEEDBACK =====\n{feedback}")
     argv = ai.interactive(prompt, cwd, edit=True)
