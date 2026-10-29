@@ -275,17 +275,20 @@ def sync_once():
     # open PRs refetch every run (CI and mergeability change without bumping updatedAt); merged ones only once
     ids = {i: u for opened, merged in found.values() for i, u in opened}
     ids.update({i: u for _, merged in found.values() for i, u in merged if u not in old or not old[u].get("merged")})
-    new = github.fetch(list(ids))
+    local = db.local_all()
+    # armed PRs that left every view (closed, or someone else's) still get checked, so they request or disarm
+    strays = {r["id"]: u for u, l in local.items() if (r := l.get("request_when_green")) and r.get("id") and u not in ids.values()}
+    new = github.fetch(list(ids) + list(strays))
     checks = {u: p.pop("_checks", []) for u, p in new.items()}
+    strays = {u: new.pop(u) for u in strays.values() if u in new}
     keep = {u: old[u] for _, merged in found.values() for _, u in merged if u not in new and u in old}
     members = {v: [u for _, u in opened + merged if u in new or u in keep] for v, (opened, merged) in found.items()}
     first = not db.get("synced_once")
-    local = db.local_all()
     events = [] if first else diff(old, new, me, old_views.get("review", set()), set(members.get("review", [])), local)
     db.save_views(members, {**keep, **new})
-    record_checks(new, checks)
+    record_checks({**new, **strays}, checks)
     events += retries(new, checks, me, local)
-    events += requests_when_green(new, checks, local)
+    events += requests_when_green({**new, **strays}, checks, local)
     if not config.get("team_view"):
         db.save_views({"team": []}, {})
     prs = {**keep, **new}

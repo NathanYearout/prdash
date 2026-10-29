@@ -62,7 +62,7 @@ def request_review(pr, arg):
     if not arg.get("green"):
         return sync.request_now(pr, r)
     # armed on a red PR: wait for a fix to be pushed, not for the current failure to clear
-    db.local_update(pr["url"], {"request_when_green": {**r, "at": time.time(), "skip": pr["head"] if pr["ci"] in ("FAILURE", "ERROR") else None}})
+    db.local_update(pr["url"], {"request_when_green": {**r, "id": pr["id"], "at": time.time(), "skip": pr["head"] if pr["ci"] in ("FAILURE", "ERROR") else None}})
     return "will request review once CI is green"
 
 
