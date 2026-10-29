@@ -97,6 +97,11 @@ check("j in drawer walks queue", (await app("a.sel")) !== focused);
 // local fields: waiting, snooze, tags (restored afterwards)
 const url = await app("a.sel");
 await app(`a.setLocal(a.cur, "waiting", "QA")`); await app(`a.setLocal(a.cur, "tags", "e2e-test")`); await sleep(300);
+await js(`(i => { i.value = "e2e-two"; i.dispatchEvent(new Event("change")); })(document.querySelector(".tag-edit input"))`); await sleep(300);
+check("tag input adds a chip and suggests it", (await app(`a.tags(a.cur).join()`)) === "e2e-test,e2e-two"
+  && await js(`[...document.querySelectorAll("#dl-tags option")].some(o => o.value === "e2e-two")`));
+await js(`[...document.querySelectorAll(".tag-edit .chip")].find(c => c.textContent === "e2e-two").querySelector("button").click()`); await sleep(300);
+check("chip x removes the tag", (await app(`a.tags(a.cur).join()`)) === "e2e-test");
 await app(`a.sel = null`); await sleep(200);
 await app(`a.q = "waiting:qa tag:e2e"`); await sleep(150);
 check("waiting + tag filterable", (await app("a.list.length")) === 1);
