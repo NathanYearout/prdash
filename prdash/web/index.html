@@ -531,6 +531,7 @@
         <div class="acts" x-show="settingsTab === 'Jira'"><button class="btn" @click="testSetting('jira')" :disabled="!settings.jira">Test Jira</button></div>
         <div class="acts" x-show="settingsTab === 'AI'"><button class="btn" @click="testSetting('ai')"><svg class="ic"><use href="/static/icons.svg#sparkles"/></svg>Test AI</button></div>
         <div class="acts" x-show="settingsTab === 'Notifications'"><button class="btn" @click="testSetting('notify')">Send test notification</button>
+          <button class="btn" @click="previewChimes()">Preview sounds</button>
           <button class="btn" x-show="'Notification' in window" @click="askNotify()">Allow browser notifications</button></div>
       </div>
       <button class="close abs" @click="panel = null"><svg class="ic"><use href="/static/icons.svg#x"/></svg></button>

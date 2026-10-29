@@ -481,8 +481,8 @@ class Handler(BaseHTTPRequestHandler):
                 "slack_channel": config.get("slack_channel"), "jira": integrations.jira_ready(),
                 "merge_method": config.get("merge_method"), "stale_days": config.get("stale_days"),
                 "merged_days": config.get("merged_days"), "team_view": config.get("team_view"),
-                "notify_browser": config.get("notify_browser"), "slack_template": config.get("slack_template"),
-                "retry_max": config.get("retry_max")}
+                "notify_browser": config.get("notify_browser"), "notify_sound": config.get("notify_sound"),
+                "slack_template": config.get("slack_template"), "retry_max": config.get("retry_max")}
 
     def stream(self):
         self.send_response(200)
