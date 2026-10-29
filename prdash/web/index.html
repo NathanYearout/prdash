@@ -140,13 +140,14 @@
   <button class="btn" @click="batch('review')" :disabled="!!busy.batch"><svg class="ic"><use href="/static/icons.svg#sparkles"/></svg><span x-text="cfg.ai_name + ' review'"></span></button>
   <button class="btn go" :class="{ armed: armed === 'batchapprove' }" @click="batch('approve')" :disabled="!!busy.batch" x-text="armed === 'batchapprove' ? 'Click to confirm' : 'Approve'"></button>
   <button class="btn" @click="batch('rerun')" :disabled="!!busy.batch">Re-run CI</button>
-  <button class="btn" @click="batchLocal({ snooze: new Date(Date.now() + 864e5).toISOString().slice(0, 10) })">Snooze 1d</button>
-  <button class="btn" @click="batchLocal({ snooze: new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10) })">1w</button>
+  <i class="sep"></i>
+  <span class="joined"><span class="btn lbl">Snooze</span><button class="btn" @click="batchLocal({ snooze: new Date(Date.now() + 864e5).toISOString().slice(0, 10) })">1d</button><button class="btn" @click="batchLocal({ snooze: new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10) })">1w</button></span>
   <button class="btn" x-show="tagging === null" @click="tagging = ''; $nextTick(() => $refs.tagging.focus())">Tag</button>
   <input class="naming" x-ref="tagging" x-show="tagging !== null" x-model="tagging" list="dl-tags" placeholder="tag, Enter" @keydown.enter="batchTag(tagging)" @input="!$event.inputType || $event.inputType === 'insertReplacementText' ? batchTag($event.target.value) : null" @keydown.escape.stop="tagging = null" @blur="tagging = null">
   <datalist id="dl-tags"><template x-for="t in allTags" :key="t"><option :value="t"></option></template></datalist>
   <button class="btn" @click="batchLocal({ posted: new Date().toISOString() })">Mark posted</button>
   <button class="btn" @click="batchLocal({ hidden: true })">Hide</button>
+  <i class="sep"></i>
   <button class="icon-btn" @click="clearPicked()" title="Clear selection (esc)"><svg class="ic"><use href="/static/icons.svg#x"/></svg></button>
 </div>
 

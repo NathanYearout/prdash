@@ -171,7 +171,7 @@ a.chip.flag:hover { text-decoration: none; background: color-mix(in srgb, curren
 .pick .ic { width: 13px; height: 13px; }
 /* the corner icon is the PR glyph until you hover (an empty checkbox) or select (checked) */
 .pick .i-off, .pick .i-on, .card:hover .pick .i-pr, .tbl tr:hover .pick .i-pr, .picked .pick .i-pr, .picked .pick .i-off { display: none; }
-.card:hover .pick .i-off, .tbl tr:hover .pick .i-off { display: inline; }
+.card:not(.picked):hover .pick .i-off, .tbl tr:not(.picked):hover .pick .i-off { display: inline; }
 .picked .pick .i-on { display: inline; }
 .empty { display: grid; place-items: center; gap: 4px; color: var(--dim); padding: 80px 20px; }
 .empty p { margin: 0; }
@@ -254,6 +254,14 @@ main { padding: 18px 24px 60px; }
   padding: 8px 10px 8px 16px; background: var(--panel); border: 1px solid var(--line-hi); border-radius: 12px; box-shadow: 0 10px 40px rgb(0 0 0 / .35); }
 .batchbar b { font-size: 12.5px; margin-right: 6px; }
 .batchbar .btn { padding: 4px 10px; font-size: 12.5px; }
+/* GitHub actions | local actions | close */
+.batchbar .sep { width: 1px; align-self: stretch; margin: 2px 4px; background: var(--line-hi); }
+/* one control in segments: [Snooze | 1d | 1w] */
+.joined { display: inline-flex; }
+.joined .btn + .btn { margin-left: -1px; border-top-left-radius: 0; border-bottom-left-radius: 0; }
+.joined .btn:not(:last-child) { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.joined .lbl { color: var(--muted); cursor: default; }
+.joined .lbl:hover { border-color: var(--line); background: var(--panel); }
 .toast { position: fixed; bottom: 20px; left: 20px; max-width: 560px; padding: 10px 16px; border-radius: 10px; background: var(--card); z-index: 20;
   border: 1px solid var(--line-hi); box-shadow: var(--shadow); font: 12px var(--mono); white-space: pre-wrap;
   opacity: 0; transform: translateY(20px); transition: .2s; pointer-events: none; }
