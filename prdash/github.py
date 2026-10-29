@@ -156,6 +156,7 @@ def flatten(n):
           for r in n["latestReviews"]["nodes"] + n["latestOpinionatedReviews"]["nodes"] if r["author"]}
     asked = [r["submittedAt"] for r in n["latestReviews"]["nodes"] if r["state"] == "CHANGES_REQUESTED" and r["submittedAt"]]
     requested = [rr["requestedReviewer"] for rr in n["reviewRequests"]["nodes"] if rr["requestedReviewer"]]
+    teams = {r["slug"] for r in requested if r.get("slug")}
     requested = [r.get("login") or r.get("slug") for r in requested]
     am = n.get("autoMergeRequest")
     p = {
@@ -177,7 +178,7 @@ def flatten(n):
         "urgent": bool(URGENT.search(n["title"])) or any(URGENT.search(l["name"]) for l in n["labels"]["nodes"]),
         "jira": sorted(set(JIRA_KEY.findall(n["title"] + " " + n["headRefName"]))),
         "reviewers": [{"who": k, "state": v, "commit": at.get(k)} for k, v in reviewed.items()]
-        + [{"who": r, "state": "REQUESTED"} for r in requested if r not in reviewed],
+        + [{"who": r, "state": "REQUESTED", **({"team": True} if r in teams else {})} for r in requested if r not in reviewed],
         "requested": requested,
         "head": head.get("oid"), "pushed": head.get("committedDate"),
         "fixes_pushed": bool(asked and head.get("committedDate") and head["committedDate"] > max(asked)),
@@ -331,6 +332,8 @@ def candidates(pr):
         try:
             return gh("api", f"orgs/{o}/teams", "--paginate", "--jq", ".[].slug").split()
         except RuntimeError as e:
+            if "403" in str(e):
+                return []  # an org that hides its teams from you
             if "404" not in str(e):
                 raise
             return None  # a user, not an org

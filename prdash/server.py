@@ -51,7 +51,7 @@ def start_review(pr, since=False):
 
 def request_review(pr, arg):
     """Request review now, or arm it for when CI is green (sync.requests_when_green). The choice is remembered per owner."""
-    names = lambda k: [x for x in arg.get(k) or [] if isinstance(x, str) and re.fullmatch(r"[\w.-]+", x)]
+    names = lambda k: [x for x in (arg.get(k) if isinstance(arg.get(k), list) else []) if isinstance(x, str) and re.fullmatch(r"[\w.-]+", x)]
     r = {"teams": names("teams"), "users": names("users"), "slack": bool(arg.get("slack"))}
     if not r["teams"] and not r["users"]:
         raise ValueError("Pick someone to review.")

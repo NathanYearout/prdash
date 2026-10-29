@@ -31,7 +31,7 @@ class Status(unittest.TestCase):
         p = github.flatten(NODE)
         self.assertEqual(p["jira"], ["ABC-12"])
         self.assertEqual(p["author"], "ghost")
-        self.assertEqual(p["reviewers"], [{"who": "alice", "state": "APPROVED", "commit": None}, {"who": "devs", "state": "REQUESTED"}])
+        self.assertEqual(p["reviewers"], [{"who": "alice", "state": "APPROVED", "commit": None}, {"who": "devs", "state": "REQUESTED", "team": True}])
         self.assertEqual(p["status"], "in_review")
 
     def test_review_commit_skips_thread_replies(self):

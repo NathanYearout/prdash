@@ -165,7 +165,7 @@ def retries(prs, checks, me, local):
         else:
             try:
                 github.rerun_runs(url, github.failed_runs(failed))
-            except RuntimeError as e:
+            except (RuntimeError, subprocess.TimeoutExpired) as e:
                 stop("retry_failed", f"Re-run failed on {label(p)}: {str(e).splitlines()[0][:200]}", gave_up=True)
                 continue
             if db.local_get(url).get("retry"):  # not stopped while the re-run request was in flight
@@ -188,7 +188,7 @@ def request_now(pr, r):
         done.append(github.request(pr, r["users"], r["teams"]))
         if r.get("slack") and not db.local_get(pr["url"]).get("posted"):
             done.append(integrations.slack_post(pr))
-    except (RuntimeError, ValueError, OSError) as e:  # OSError: Slack unreachable
+    except (RuntimeError, ValueError, OSError, subprocess.TimeoutExpired) as e:  # OSError: Slack unreachable
         raise RuntimeError((f"{said(done)}, then " if done else "") + f"failed: {str(e).splitlines()[0][:200]}") from None
     return said(done)
 
