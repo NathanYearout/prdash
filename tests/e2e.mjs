@@ -198,6 +198,12 @@ check("g colors open cards by age", await js(`document.querySelectorAll(".board 
 await key("g"); await sleep(200);
 await app(`(a.focus = a.order[0]?.url)`); await key("m");
 check("m opens the PR and focuses the comment box", await waitFor(`document.activeElement === Alpine.$data(document.body).$refs.composer`, 3000));
+await js(`(() => { const el = document.activeElement; el.value = "cc @"; el.dispatchEvent(new Event("input")); })()`); await sleep(100);
+const who = await app("a.mentionList[1]");
+await js(`document.activeElement.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }))`);
+await js(`document.activeElement.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }))`); await sleep(100);
+check("@ suggests people and Enter inserts one", !!who && (await app("a.cbody")) === `cc @${who} ` && (await app("a.mention")) === null);
+await app(`(a.cbody = "")`);
 await js(`document.activeElement.blur()`); await key("Escape"); await sleep(300);
 await app("a.openInbox()"); await waitFor(`Alpine.$data(document.body).events.length >= 0`); await app(`(a.inboxFilter = "mentions")`); await sleep(150);
 check("inbox mentions filter", await app(`a.shownEvents.every(e => e.kind === "mention")`));

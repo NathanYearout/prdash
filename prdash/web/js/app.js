@@ -115,7 +115,7 @@ Alpine.data("prdash", () => ({
   scope: "mine", preset: "open", layout: "board", q: "", sort: "updated", dir: -1, showHidden: false, heat: false,
   replyFor: null, replyBody: "", inboxFilter: "all", insights: null, insightsView: "mine",
   rev: 0, cfg: {}, status: { syncing: false, at: null, error: null }, now: Date.now(), sel: null, focus: null, picked: {}, detail: {}, detailFor: null,
-  cbody: "", convoAll: false, picker: null, armed: null, busy: {}, toastMsg: "", toastErr: false, panel: null, palQ: "", palI: 0, settings: null,
+  cbody: "", mention: null, convoAll: false, picker: null, armed: null, busy: {}, toastMsg: "", toastErr: false, panel: null, palQ: "", palI: 0, settings: null,
   settingsTab: "Appearance", events: [],
   standup: { window: "yesterday", text: "", summary: "", view: "details", loading: false, summarizing: false }, builderOpen: false, saved: [], more: {}, setup: null,
   notifyPermission: "Notification" in window ? Notification.permission : "unsupported", naming: null, tagging: null, lastPicked: null,
@@ -215,7 +215,7 @@ Alpine.data("prdash", () => ({
     const n = {};
     for (const p of Object.values(this.data?.prs || {})) {
       n[p.author] = (n[p.author] || 0) + 1;
-      for (const r of p.reviewers) n[r.who] = (n[r.who] || 0) + 1;
+      for (const r of p.reviewers) if (!r.team) n[r.who] = (n[r.who] || 0) + 1;
     }
     return Object.keys(n).filter(x => x !== "ghost" && !x.endsWith("[bot]")).sort((a, b) => n[b] - n[a] || a.localeCompare(b));
   },
@@ -409,6 +409,36 @@ Alpine.data("prdash", () => ({
     if (!p) return;
     this.sel = p.url;
     setTimeout(() => { const el = this.$refs.composer; el?.scrollIntoView({ block: "center" }); el?.focus(); }, 250);
+  },
+  // @mention autocomplete in the comment and reply boxes: this PR's people first, then everyone on synced PRs
+  get mentionList() {
+    const m = this.mention, p = this.pane;
+    if (!m || !p) return [];
+    const convo = (this.detail.conversation || []).flatMap(c => [c, ...(c.comments || [])]).map(c => c.who);
+    const q = m.q.toLowerCase(), starts = u => !u.toLowerCase().startsWith(q);
+    return [...new Set([p.author, ...p.reviewers.filter(r => !r.team).map(r => r.who), ...convo, ...this.people])]
+      .filter(u => u && u !== this.data?.me && u !== "ghost" && !u.endsWith("[bot]") && u.toLowerCase().includes(q))
+      .sort((a, b) => starts(a) - starts(b)).slice(0, 6);
+  },
+  mentionInput(e) {
+    const el = e.target, m = el.value.slice(0, el.selectionStart).match(/(?:^|[^\w`])@([\w-]*)$/);
+    this.mention = m ? { el, at: el.selectionStart - m[1].length, q: m[1], i: 0, r: el.getBoundingClientRect() } : null;
+  },
+  mentionKey(e) {
+    const n = this.mentionList.length;
+    if (!n) return;
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") this.mention.i = (this.mention.i + (e.key === "ArrowDown" ? 1 : n - 1)) % n;
+    else if ((e.key === "Enter" && !e.ctrlKey && !e.metaKey) || e.key === "Tab") this.pickMention();
+    else if (e.key === "Escape") this.mention = null;
+    else return;
+    e.preventDefault(); e.stopImmediatePropagation(); // keep Esc from cancelling the reply or closing the drawer
+  },
+  pickMention(i = this.mention.i) {
+    const { el, at, q } = this.mention, u = this.mentionList[i], v = el.value;
+    el.value = v.slice(0, at) + u + " " + v.slice(at + q.length);
+    el.dispatchEvent(new Event("input")); // x-model picks it up
+    el.selectionStart = el.selectionEnd = at + u.length + 1;
+    this.mention = null;
   },
   startReply(t) { this.replyFor = t.id; this.replyBody = ""; this.$nextTick(() => document.getElementById("reply-" + t.id)?.focus()); },
 
