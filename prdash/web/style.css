@@ -142,7 +142,9 @@ a.chip.jira:hover { text-decoration: none; background: color-mix(in srgb, var(--
 .chip.flag { border-color: transparent; }
 .chip.flag.red { color: var(--red); background: color-mix(in srgb, var(--red) 11%, transparent); }
 .chip.flag.amber { color: var(--amber); background: color-mix(in srgb, var(--amber) 11%, transparent); }
+.chip.flag.green { color: var(--green); background: color-mix(in srgb, var(--green) 11%, transparent); }
 .chip.flag.muted { color: var(--dim); background: color-mix(in srgb, var(--dim) 10%, transparent); }
+a.chip.flag:hover { text-decoration: none; background: color-mix(in srgb, currentColor 20%, transparent); }
 .chip.rv-APPROVED { color: var(--green); } .chip.rv-CHANGES_REQUESTED { color: var(--red); } .chip.rv-REQUESTED { color: var(--amber); }
 .rv-APPROVED { color: var(--green); } .rv-CHANGES_REQUESTED { color: var(--red); } .rv-REVIEW_REQUIRED { color: var(--amber); }
 .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--line-hi); flex: none; }
@@ -393,6 +395,13 @@ main { padding: 18px 24px 60px; }
 .retry { display: flex; align-items: center; gap: 8px; margin-top: 10px; padding: 7px 10px; border-radius: 8px; font-size: 12.5px;
   background: color-mix(in srgb, var(--amber) 9%, transparent); color: var(--text); }
 .retry > .ic { color: var(--amber); }
+.quick .btn.on { border-color: var(--accent); color: var(--text); }
+.pick-list { list-style: none; margin: 8px 0 0; padding: 0; max-height: 240px; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 2px 14px; }
+.pick-list li { display: flex; align-items: center; gap: 8px; padding: 3px 0; min-width: 0; }
+.pick-list .toggle { flex: 1; min-width: 0; color: var(--text); }
+.pick-list .toggle span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pick-list .toggle .ic { width: 15px; height: 15px; color: var(--dim); }
+.pick-list .load { font: 11.5px var(--mono); color: var(--dim); }
 .spin-slow { animation: spin 2.4s linear infinite; }
 @media (prefers-reduced-motion: reduce) { .spin-slow { animation: none; } }
 .checks .chip.flag { margin-left: 6px; }

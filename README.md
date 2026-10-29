@@ -53,7 +53,9 @@ Running `prdash` again reopens the dashboard. prdash also keeps itself current: 
 <td width="50%" valign="top">
 
 ### One board
-Draft → Needs work → In review → Approved → Merged across every org you pick. **Needs work** says why: failing CI, requested changes, or conflicts. Push new commits after a change request and the PR goes back to In review, with a button to re-request review from the people who asked for changes (the person, not the team they were requested through). Cards nudge you when an approved PR sits unmerged or a review goes quiet.
+Draft → Needs work → In review → Approved → Merged across every org you pick. **Needs work** says why: failing CI, requested changes, or conflicts. Push new commits after a change request and the PR goes back to In review, with a button to re-request review from the people who asked for changes (the person, not the team they were requested through). Cards nudge you when an approved PR sits unmerged or a review goes quiet. Open PRs also say what's stopping them from merging (behind the base branch, needs approval, required checks, or branch rules), and the PR panel puts the fix next to it. **Merge when ready** turns on GitHub's auto-merge wherever the repo allows it, and the card says **Auto-merge** until it lands.
+
+**Request review** (`q`) picks people and teams from the PR panel: the org's teams, the people prdash has seen in that org, or the collaborators on a personal repo. With the team view on, each one shows how many open PRs are waiting on them. Tick **When CI is green** and prdash waits, across pushes, until CI passes (marking a draft ready first), then requests review and posts to Slack if you asked. If CI fails it requests nothing and tells you in the inbox; armed on a red PR, it waits for your next push. It remembers your picks per org or user, so the next PR there opens with the same team and Slack choice ticked.
 
 </td>
 <td width="50%"><img src="docs/table.png" alt="Table view of team PRs"></td>
@@ -73,7 +75,7 @@ Put **urgent** in a title (or add an `urgent` label) and the card gets a red rin
 <td valign="top">
 
 ### AI reviews
-**Open in Claude** starts a session in the PR's repo with its description, comments, and diff loaded. **Review** runs read-only in the background and adds a summary, a list of issues with `file:line`, and a verdict to the card. You can review one PR or a whole selection. It works with [Claude Code, Codex, or any OpenAI-compatible API](#ai-providers), including DeepSeek, Grok, Gemini, OpenRouter, and a local Ollama.
+**Open in Claude** starts a session in the PR's repo with its description, comments, and diff loaded. **Review** runs read-only in the background and adds a summary, a list of issues with `file:line`, and a verdict to the card. You can review one PR or a whole selection. When a PR you reviewed gets new commits, its card says **New since your review** and links to just those changes, and **Review changes since mine** reviews only that range and checks whether your earlier comments were addressed. If the branch was rebased or force-pushed since, it does a full review and says so. It works with [Claude Code, Codex, or any OpenAI-compatible API](#ai-providers), including DeepSeek, Grok, Gemini, OpenRouter, and a local Ollama.
 
 </td>
 </tr>
@@ -176,6 +178,9 @@ Terms AND together, commas OR within a term, and a leading `-` negates. Bare wor
 | `ci:failing` · `review:changes` | CI: failing passing pending none · review: approved changes needed none |
 | `is:urgent` · `is:bumped` · `is:stale` · `is:mine` | Also draft, open, merged, approved, needs-work, in-review, conflict, posted, snoozed, hidden |
 | `is:pushed` · `is:mentioned` · `is:retrying` | New commits since changes requested · @mentions you · retrying until green. Also following, muted |
+| `is:requesting` | A review request waiting for CI to go green |
+| `is:new-since-review` | Someone else's open PR with new commits (or a rebase) since your last review |
+| `is:blocked` · `is:behind` · `is:auto-merge` | Can't merge yet, for any reason · behind its base branch · auto-merge is on |
 | `has:threads` · `threads:>2` · `has:jira` · `-has:note` | Unresolved review threads. Also tags, waiting, review (AI), labels, reviewers |
 
 ## Keyboard
@@ -189,7 +194,7 @@ Terms AND together, commas OR within a term, and a leading `-` negates. Bare wor
 | `1` `2` `3` | Mine · Review requested · Team | `z` `h` | Snooze a day · hide |
 | `b` `t` | Board · table | `i` `u` `s` | Inbox · standup · insights |
 | `m` | Comment on the PR | `g` | Color PRs by age |
-| `,` `r` `?` | Settings · sync · help | | |
+| `,` `r` `?` | Settings · sync · help | `q` | Request review |
 
 ## Settings
 
@@ -238,7 +243,7 @@ node tests/screenshots.mjs                    # regenerate docs/*.png and docs/u
 
 CI runs the tests on every push. When the UI changes, a second workflow starts demo mode, re-renders the README screenshots and GIF in headless Chrome, and commits any that changed.
 
-Board status lives in `status()` in `prdash/github.py`, inbox rules in `diff()` in `prdash/sync.py`, filter keys in `prdash/web/js/filter.js`, and settings in `FIELDS` in `prdash/config.py`.
+Board status and merge blockers live in `status()` and `blocker()` in `prdash/github.py`, inbox rules in `diff()` in `prdash/sync.py`, filter keys in `prdash/web/js/filter.js`, and settings in `FIELDS` in `prdash/config.py`.
 
 ## License
 

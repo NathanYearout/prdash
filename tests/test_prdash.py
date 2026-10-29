@@ -17,7 +17,7 @@ NODE = {
     "mergeable": "MERGEABLE", "reviewDecision": None, "author": None, "mergedBy": None,
     "repository": {"name": "web", "owner": {"login": "acme"}}, "labels": {"nodes": []}, "comments": {"totalCount": 0, "nodes": []},
     "reviewRequests": {"nodes": [{"requestedReviewer": {"login": "alice"}}, {"requestedReviewer": {"slug": "devs"}}]},
-    "latestReviews": {"nodes": [{"author": {"login": "alice"}, "state": "APPROVED", "submittedAt": "x"}]},
+    "latestReviews": {"nodes": [{"author": {"login": "alice"}, "state": "APPROVED", "submittedAt": "x"}]}, "latestOpinionatedReviews": {"nodes": []},
     "reviews": {"nodes": []}, "reviewThreads": {"nodes": []}, "commits": {"nodes": []},
 }
 
@@ -31,8 +31,15 @@ class Status(unittest.TestCase):
         p = github.flatten(NODE)
         self.assertEqual(p["jira"], ["ABC-12"])
         self.assertEqual(p["author"], "ghost")
-        self.assertEqual(p["reviewers"], [{"who": "alice", "state": "APPROVED"}, {"who": "devs", "state": "REQUESTED"}])
+        self.assertEqual(p["reviewers"], [{"who": "alice", "state": "APPROVED", "commit": None}, {"who": "devs", "state": "REQUESTED"}])
         self.assertEqual(p["status"], "in_review")
+
+    def test_review_commit_skips_thread_replies(self):
+        rv = lambda who, state, oid: {"author": {"login": who}, "state": state, "submittedAt": "x", "commit": {"oid": oid}}
+        p = github.flatten({**NODE, "latestReviews": {"nodes": [rv("alice", "COMMENTED", "c2"), rv("bob", "COMMENTED", "c3")]},
+                            "latestOpinionatedReviews": {"nodes": [rv("alice", "APPROVED", "c1")]}})
+        self.assertEqual({r["who"]: r.get("commit") for r in p["reviewers"]}, {"alice": "c1", "bob": "c3", "devs": None},
+                         "a reply after approving doesn't move alice's review; bob only commented")
 
     def test_status_order(self):
         cases = [({"merged": "x", "draft": True}, "merged"), ({"draft": True, "ci": "FAILURE"}, "draft"),
@@ -41,6 +48,22 @@ class Status(unittest.TestCase):
                  ({"review": "REVIEW_REQUIRED", "ci": "SUCCESS"}, "in_review")]
         for over, want in cases:
             self.assertEqual(github.status(pr(**over)), want, over)
+
+    def test_blocker(self):
+        cases = [({"merge_state": "BEHIND"}, "Behind main"), ({"merge_state": "BLOCKED", "review": "REVIEW_REQUIRED"}, "Needs approval"),
+                 ({"merge_state": "BLOCKED", "review": "APPROVED", "ci": "PENDING"}, "Required checks"),
+                 ({"merge_state": "BLOCKED", "review": "APPROVED", "ci": "SUCCESS"}, "Blocked by branch rules"),
+                 ({"merge_state": "DIRTY"}, None), ({"merge_state": "CLEAN"}, None), ({"merge_state": "BEHIND", "draft": True}, None)]
+        for over, want in cases:
+            self.assertEqual(github.blocker(pr(**over)), want, over)
+
+    def test_auto_merge(self):
+        p = github.flatten({**NODE, "autoMergeRequest": {"mergeMethod": "SQUASH", "enabledBy": {"login": "me"}}, "viewerCanDisableAutoMerge": True})
+        self.assertEqual((p["auto_merge"], p["can_automerge_off"]), ({"method": "squash", "by": "me"}, True))
+        self.assertIsNone(github.flatten(NODE)["auto_merge"])
+        self.assertEqual(github.ACTIONS["automerge"]("u", "")[:4], ["pr", "merge", "u", "--auto"])
+        self.assertEqual(github.ACTIONS["automerge_off"]("u", ""), ["pr", "merge", "u", "--disable-auto"])
+        self.assertTrue({"automerge", "automerge_off"} <= server.CHANGES_GITHUB, "a sync follows so the card updates")
 
     def test_bump_and_urgent(self):
         c = lambda body, who="bob", at="2026-10-05T00:00:00Z": {"body": body, "createdAt": at, "author": {"login": who}}
@@ -131,6 +154,37 @@ class Inbox(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "your own PRs"):
             local.fix(pr(author="bob"), [{"what": "thread", "resolved": False}])
 
+    def test_review_since_your_last_review(self):
+        from prdash import ai, local
+        db.put("viewer", "me")
+        p = pr(author="bob", head="h2", reviewers=[{"who": "me", "state": "APPROVED", "commit": "h1"}])
+        with self.assertRaisesRegex(ValueError, "Nothing new"):
+            server.start_review({**p, "head": "h1"}, since=True)
+        status, sent = ["ahead"], []
+
+        def gh(*a, **k):
+            if a[0] != "api":
+                return "FULL DIFF" if a[1] == "diff" else "PR TEXT"
+            if not status[0]:
+                raise RuntimeError("No commit found for SHA: h1")
+            return status[0] if "--jq" in a else "COMPARE DIFF"
+        convo = [{"who": "me", "what": "approved", "text": "LGTM, but rename x"}, {"who": "alice", "what": "approved", "text": "ok"},
+                 {"who": "me", "what": "thread", "path": "a.py", "line": 3, "outdated": False, "comments": [{"who": "me", "text": "off by one"}]}]
+        real = local.gh, local.conversation, ai.complete
+        local.gh, local.conversation = gh, lambda url: convo
+        ai.complete = lambda prompt, data, **k: sent.append((prompt, data)) or "ok"
+        try:
+            local._run_review(p, lambda pr: None, "h1")
+            self.assertIn("at commit h1", sent[-1][0])
+            self.assertIn("COMPARE DIFF", sent[-1][1]); self.assertNotIn("FULL DIFF", sent[-1][1])
+            self.assertIn("LGTM, but rename x", sent[-1][1]); self.assertIn("off by one", sent[-1][1]); self.assertNotIn("alice", sent[-1][1])
+            for status[0] in ("diverged", None):  # rebased or force-pushed, or the reviewed commit is gone: full review
+                local._run_review(p, lambda pr: None, "h1")
+                self.assertIn("FULL DIFF", sent[-1][1]); self.assertNotIn("MY EARLIER FEEDBACK", sent[-1][1])
+                self.assertTrue(db.reviews()[p["url"]]["output"].startswith("The branch was rewritten"))
+        finally:
+            local.gh, local.conversation, ai.complete = real
+
     def test_mentions_follow_and_mute(self):
         u = NODE["url"]
         c = [{"body": "@Me can you look? cc @bob, not foo@me.com", "createdAt": "5", "author": {"login": "alice"}}]
@@ -184,6 +238,65 @@ class Inbox(unittest.TestCase):
             github.rerun_runs = real
             config.put("retry_flaky", None)
             db.local_update(u, {"retry": None, "retry_done": None})
+
+    def test_request_review(self):
+        u, calls = NODE["url"], []
+        real = github.gh
+        github.gh = lambda *a, **k: calls.append(a) or ""
+        try:
+            self.assertEqual(github.request(pr(), ["bob"], ["devs"]), "requested review from devs, bob")
+            self.assertEqual(calls[-1][-4:], ("-f", "reviewers[]=bob", "-f", "team_reviewers[]=devs"))
+            with self.assertRaisesRegex(ValueError, "already a reviewer"):
+                github.rerequest(pr(), ["carol"])
+            self.assertEqual(github.rerequest(pr(), ["alice"]), "re-requested review from alice")
+            with self.assertRaisesRegex(ValueError, "Pick someone"):
+                server.request_review(pr(), {"users": ["bad name;"]})
+            self.assertIn("once CI is green", server.request_review(pr(ci="FAILURE", head="h1"), {"teams": ["devs"], "slack": True, "green": True}))
+            self.assertEqual(db.get("request_prefs")["acme"], {"teams": ["devs"], "users": [], "slack": True}, "remembered for the owner")
+            self.assertEqual(db.local_get(u)["request_when_green"]["skip"], "h1", "armed on a red PR: waits for the next push")
+        finally:
+            github.gh = real
+            db.local_update(u, {"request_when_green": None})
+
+    def test_request_when_green(self):
+        u, did = NODE["url"], []
+        real = github.request, github.act, integrations.slack_post
+        github.act = lambda op, url, body="": did.append(op)
+        github.request = lambda pr, users, teams=(): did.append("request") or "requested review from devs"
+        integrations.slack_post = lambda pr: did.append("slack") or "posted to #prs"
+        arm = lambda **r: db.local_update(u, {"request_when_green": {"teams": ["devs"], "users": [], "slack": False, "skip": None, **r}})
+        step = lambda states, **p: sync.requests_when_green({u: pr(head="h2", **p)}, {u: [{"name": "t", "state": s, "run": 1} for s in states]},
+                                                           db.local_all())
+        armed = lambda: "request_when_green" in db.local_get(u)
+        try:
+            arm(skip="h2")
+            self.assertEqual(step(["FAILURE"]), []); self.assertTrue(armed(), "failures on the head it was armed on don't count")
+            arm()
+            self.assertEqual(step(["IN_PROGRESS", "SUCCESS"]), []); self.assertTrue(armed(), "waits while checks run")
+            db.put("ci_repos", ["acme/web"])
+            self.assertEqual(step([]), []); self.assertTrue(armed(), "no checks yet in a repo with CI: waits")
+            db.local_update(u, {"retry": {"head": "h2"}})
+            self.assertEqual(step(["FAILURE"]), []); self.assertTrue(armed(), "Retry until green gets its chance")
+            db.local_update(u, {"retry": None})
+            self.assertEqual([k for _, k, _ in step(["FAILURE"])], ["request_failed"]); self.assertFalse(armed())
+            arm(slack=True)
+            self.assertEqual(step(["SUCCESS", "SKIPPED"], draft=True)[0][2], "Marked ready, requested review from devs and posted to #prs: web#1 [ABC-12] Fix")
+            self.assertEqual(did, ["ready", "request", "slack"]); self.assertFalse(armed())
+            db.put("ci_repos", [])
+            arm()
+            self.assertEqual([k for _, k, _ in step([])], ["requested"], "a repo that never had CI counts as passing")
+            arm(slack=True)
+            integrations.slack_post = lambda pr: (_ for _ in ()).throw(OSError("timed out"))
+            self.assertIn("requested review from devs, then failed: timed out", step(["SUCCESS"])[0][2], "Slack down doesn't break the sync")
+            arm()
+            github.request = lambda *a: (_ for _ in ()).throw(RuntimeError("HTTP 422"))
+            self.assertIn("failed: HTTP 422", step(["SUCCESS"])[0][2]); self.assertFalse(armed())
+            arm()
+            self.assertEqual(step(["SUCCESS"], merged="x"), []); self.assertFalse(armed(), "merged: stops quietly")
+        finally:
+            github.request, github.act, integrations.slack_post = real
+            db.local_update(u, {"request_when_green": None, "retry": None})
+            db.put("ci_repos", None)
 
     def test_diff_ignores_others_and_new(self):
         u = NODE["url"]

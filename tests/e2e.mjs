@@ -156,6 +156,35 @@ const moved = await js(`(async () => {
 })()`);
 check("board follows status changes from a sync", moved);
 
+// PRs you reviewed that have moved on since: a chip linking to just those changes, and a review of only them
+await app(`(a.scope = "team", a.preset = "open", a.q = "is:new-since-review", a.sel = null, a.panel = null)`); await sleep(200);
+check("is:new-since-review chip links to the changes since", (await app("a.list.length")) > 0 &&
+  await js(`[...document.querySelectorAll(".board a.chip.flag")].some(c => /\\/files\\/\\w+\\.\\.\\w+$/.test(c.href))`));
+await app(`a.sel = a.list[0].url`); await sleep(300);
+check("panel offers a review of changes since yours", await js(`[...document.querySelectorAll(".quick .btn")].some(b => b.offsetParent && b.textContent.includes("since mine"))`));
+await shot("13c-new-since-review");
+// why a PR can't merge: a chip on the card, and the fix next to it in the panel; auto-merge where GitHub allows it
+await app(`(a.q = "is:behind", a.sel = null)`); await sleep(200);
+check("is:behind card says why it can't merge", (await app("a.list.length")) > 0 &&
+  await js(`[...document.querySelectorAll(".board .chip.flag")].some(c => /^Behind /.test(c.textContent))`));
+await app(`a.sel = a.list[0].url`); await sleep(300);
+check("panel puts rebase next to the blocker", await js(`[...document.querySelectorAll(".drawer .nudge")].some(n => n.offsetParent && /Behind/.test(n.textContent) && /Rebase on/.test(n.textContent))`));
+check("merge when ready shows where GitHub allows it", await js(`[...document.querySelectorAll(".drawer .btn")].some(b => b.offsetParent && b.textContent.includes("Merge when ready"))`));
+await app(`(a.q = "is:auto-merge", a.sel = null)`); await sleep(200);
+await app(`a.sel = a.list[0]?.url`); await sleep(300);
+check("auto-merge on: card chip, and Cancel in the panel", await js(`!!document.querySelector(".board .chip.flag.green")`) &&
+  await js(`[...document.querySelectorAll(".drawer .btn")].some(b => b.offsetParent && b.textContent === "Cancel")`));
+await shot("13d-auto-merge");
+// request review: a picker with each team's and person's load, opening with what you picked last time for this org
+await app(`(a.q = "is:requesting", a.sel = null)`); await sleep(200);
+check("is:requesting card waits for green", (await app("a.list.length")) > 0 &&
+  await js(`[...document.querySelectorAll(".board .chip.flag")].some(c => c.textContent === "Review when green")`));
+await app(`(a.q = "is:in-review author:@me", a.sel = null)`); await sleep(200);
+await app(`a.focus = a.list.find(p => !p.requested.includes("web-devs")).url`); await key("q");
+check("q opens the request picker with your last pick for this org", await waitFor(`[...document.querySelectorAll(".pick-list li")].some(li =>
+  li.textContent.includes("web-devs") && li.querySelector("input").checked && /^\\d+$/.test(li.querySelector(".load").textContent))`, 10000));
+await shot("13e-request-review");
+await key("Escape"); await sleep(100);
 await app(`(a.scope = "team", a.preset = "open", a.q = "", a.sel = null, a.panel = null)`); await sleep(200);
 check("a fork's branch never counts as a stack base", await app(`(() => {
   const ps = Object.values(a.data.prs).filter(p => p.state === "OPEN"), f = ps[0], g = ps.find(p => p !== f && p.owner === f.owner && p.repo === f.repo);

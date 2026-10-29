@@ -20,7 +20,10 @@ export const SYNTAX = [
   ["ci:failing  review:approved", "ci: failing passing pending none · review: approved changes needed none"],
   ["is:urgent  is:bumped  is:stale", "Also draft open merged approved needs-work in-review mine snoozed hidden posted conflict"],
   ["is:pushed  is:mentioned  is:retrying", "New commits since changes requested · @mentions you · retrying until green"],
+  ["is:requesting", "Review request waiting for CI to go green"],
   ["is:following  is:muted", "PRs you follow for notifications, or muted"],
+  ["is:new-since-review", "Someone else's open PR that has moved on since your last review (new commits or a rebase)"],
+  ["is:blocked  is:behind  is:auto-merge", "Can't merge yet (behind, needs approval, required checks, branch rules) · behind its base · auto-merge on"],
   ["has:threads  threads:>2", "Unresolved review threads · has:jira note tags review waiting slack labels"],
   ["label:bug  tag:blocked  jira:ENG-4", "GitHub label, your tag, ticket key prefix"],
   ["waiting:qa  prio:>=2  comments:>5", "Your waiting-on text, priority 0-3, comment count"],
@@ -54,6 +57,11 @@ function num(value, spec) {
   return { "<": value < n, "<=": value <= n, ">": value > n, ">=": value >= n, "=": value === n, undefined: value === n }[m[1]];
 }
 
+// the commit you last reviewed, when head has moved on from it; null otherwise
+export const sinceReview = (p, me) => {
+  const r = !p.merged && p.state === "OPEN" && p.author !== me && p.reviewers.find(r => r.who === me && r.commit);
+  return r && r.commit !== p.head ? r.commit : null;
+};
 const any = (value, fn) => value.toLowerCase().split(",").filter(Boolean).some(fn);
 const has = (s, v) => (s || "").toLowerCase().includes(v);
 
@@ -95,8 +103,9 @@ const IS = {
   snoozed: (p, c) => !!c.L(p).snooze, hidden: (p, c) => !!c.L(p).hidden, posted: (p, c) => !!c.L(p).posted,
   conflict: p => p.mergeable === "CONFLICTING", failing: p => CI.failing.includes(p.ci),
   urgent: p => !!p.urgent, bumped: p => !!p.bump, pushed: p => !!p.fixes_pushed && !p.merged,
-  mentioned: (p, c) => !!c.me && !!p.mentions?.[c.me.toLowerCase()], retrying: (p, c) => !!c.L(p).retry,
-  following: (p, c) => !!c.L(p).following, muted: (p, c) => !!c.L(p).muted,
+  mentioned: (p, c) => !!c.me && !!p.mentions?.[c.me.toLowerCase()], retrying: (p, c) => !!c.L(p).retry, requesting: (p, c) => !!c.L(p).request_when_green,
+  following: (p, c) => !!c.L(p).following, muted: (p, c) => !!c.L(p).muted, "new-since-review": (p, c) => !!sinceReview(p, c.me),
+  blocked: p => !!p.blocker, behind: p => !p.merged && p.merge_state === "BEHIND", "auto-merge": p => !p.merged && !!p.auto_merge,
 };
 const HAS = {
   jira: p => p.jira.length > 0, note: (p, c) => !!c.L(p).note, tags: (p, c) => !!c.L(p).tags, waiting: (p, c) => !!c.L(p).waiting,
