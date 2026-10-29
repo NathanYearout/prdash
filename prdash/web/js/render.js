@@ -45,7 +45,7 @@ export function card(a, p) {
   const html = `<article class="${cls}" data-url="${esc(p.url)}"${heat ? ` style="${heat[0]}"` : ""}>
   <div class="card-top">
     ${PICK}
-    <span class="repo">${esc(p.repo)}</span><span class="num">#${p.number}</span>
+    <span class="repo" title="${esc(p.repo)}">${esc(p.repo)}</span><span class="num">#${p.number}</span>
     ${prio ? `<span class="prio p${prio}" title="Priority: ${PRIO[prio]}">${"●".repeat(prio)}</span>` : ""}
     <span class="grow"></span>
     ${r.status === "running" ? icon("sparkles", "state spin") : r.status === "done" ? `<span title="${esc(a.cfg.ai_name)} reviewed">${icon("sparkles", "state ok")}</span>` : ""}
