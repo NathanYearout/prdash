@@ -83,7 +83,7 @@ Put **urgent** in a title (or add an `urgent` label) and the card gets a red rin
 <td valign="top">
 
 ### Comments and threads
-The PR panel shows the description, comments, and reviews formatted the way GitHub shows them. Code comments are threads you can reply to and resolve without leaving the board, and resolved ones fold away. On your own PR, **Fix with Claude** opens your AI in the PR's worktree with every unresolved comment loaded; it asks before it changes a file and never commits or pushes. Press `m` to comment on whatever PR you're looking at.
+The PR panel shows the description, comments, and reviews formatted the way GitHub shows them. Code comments are threads you can reply to and resolve without leaving the board, and resolved ones fold away. On your own PR, **Fix with Claude** opens your AI in the PR's worktree with every unresolved comment loaded; it asks before it changes a file and never commits or pushes. Press `m` to comment on whatever PR you're looking at; `]` and `[` step through unresolved threads, `r` replies, and `R` resolves.
 
 </td>
 <td><img src="docs/conversation.png" alt="PR conversation with a code comment thread, a resolved thread, and a comment box"></td>
@@ -111,7 +111,7 @@ When a check fails and then passes on the same commit, prdash records it as a fl
 <td valign="top">
 
 ### Keyboard shortcuts
-`Ctrl K` finds any action or PR. `j`/`k` walk the queue with the panel open, so reviewing a stack is one key per PR. Single keys approve, open in Claude, start a review, open your editor, or snooze.
+Vim-style: `j`/`k`/`h`/`l` move across the board, `gg`/`G` jump to the ends, and `j`/`k` walk the queue with a PR open, so reviewing a stack is one key per PR. `f` filters by the PR under the cursor, `Space` opens a which-key menu of PR actions (merge, rebase, re-run checks), and `Ctrl K` finds anything else.
 
 </td>
 </tr>
@@ -137,7 +137,7 @@ Pick since your last workday, this week, or last week to see what shipped, what 
 <td valign="top">
 
 ### Insights and PR age
-`s` shows the median time to first review and to merge for your PRs, your review queue, or the team, the PRs that have waited longest for a first review, and the checks that flake most. On the board, `g` colors open PRs by how long they've been open: green when new, amber around a week, red around a month, and an increasingly red card up to six months, with the oldest first in each column.
+`s` shows the median time to first review and to merge for your PRs, your review queue, or the team, the PRs that have waited longest for a first review, and the checks that flake most. On the board, `ga` colors open PRs by how long they've been open: green when new, amber around a week, red around a month, and an increasingly red card up to six months, with the oldest first in each column.
 
 </td>
 <td><img src="docs/insights.png" alt="Insights panel with review and merge times, PRs waiting for review, and flaky checks"></td>
@@ -185,16 +185,30 @@ Terms AND together, commas OR within a term, and a leading `-` negates. Bare wor
 
 ## Keyboard
 
-| Key | | Key | |
+Vim-style. `g`, `f`, `d`, and `Space` wait for a second key and show what can follow. `?` lists everything, and `Ctrl K` finds any action or PR.
+
+| Move | | PR | |
 |---|---|---|---|
-| `Ctrl K` | Command palette | `c` `v` | Open in your AI · AI review |
-| `/` `f` | Search · filter builder | `e` `w` | Editor · worktree |
-| `j` `k` `Enter` | Move · open (walks the queue when open) | `p` `y` `O` | Announce in Slack · copy link · GitHub |
-| `x` `X` | Select · select all | `a` | Approve (press twice) |
-| `1` `2` `3` | Mine · Review requested · Team | `z` `h` | Snooze a day · hide |
-| `b` `t` | Board · table | `i` `u` `s` | Inbox · standup · insights |
-| `m` | Comment on the PR | `g` | Color PRs by age |
-| `,` `r` `?` | Settings · sync · help | `q` | Request review |
+| `j` `k` | Next · previous PR (walks the queue with a PR open) | `a` | Approve (press twice) |
+| `h` `l` | Column left · right | `c` `C` | Open in your AI · AI review |
+| `gg` `G` | First · last PR | `m` `q` | Comment · request review |
+| `Ctrl d` `Ctrl u` | Half page (scrolls the open PR) | `e` `w` | Editor · worktree |
+| `Enter` `o` | Open the PR | `p` `y` | Announce in Slack · copy link |
+| `Esc` | Close or step back | `gx` `O` | Open on GitHub |
+| **Open PR** | | `z` `Z` `dd` | Snooze a day · a week · hide |
+| `]` `[` | Next · previous unresolved thread | `x` `v` `X` | Select · visual select · select all |
+| `r` `R` | Reply · resolve the thread | **Space (leader)** | |
+| `}` `{` | Next · previous section | `␣m` `␣M` | Merge (twice) · merge when ready |
+| **Filter** | | `␣r` `␣d` | Rebase · draft/ready |
+| `/` | Search (Enter goes back to the board) | `␣x` `␣g` | Re-run failed checks · retry until green |
+| `ff` | Filter builder | `␣q` `␣C` | Re-request review · AI review of changes since yours |
+| `fa` `fr` | This PR's author · repo | `␣f` `␣c` `␣t` | Fix with AI · check out · terminal |
+| `fc` `fn` `fu` | CI failing · new since your review · urgent | `␣n` `␣w` `␣X` | Mute · follow · close (twice) |
+| `fp` `fh` | Next preset · show hidden | **View** | |
+| `fs` `f1`–`f9` | Save filter · apply a saved one | `1` `2` `3` | Mine · Review requested · Team |
+| `fx` | Clear filters | `b` `t` `ga` | Board · table · color by age |
+| | | `i` `u` `s` | Inbox · standup · insights |
+| | | `S` `,` `?` | Sync · settings · help |
 
 ## Settings
 

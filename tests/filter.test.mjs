@@ -1,7 +1,7 @@
 // node --test tests/  (Node 18+)
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { compile, getTerm, parse, setTerm } from "../prdash/web/js/filter.js";
+import { compile, flipTerm, getTerm, parse, setTerm } from "../prdash/web/js/filter.js";
 
 const now = Date.parse("2026-10-27T12:00:00Z");
 const pr = (o = {}) => ({
@@ -56,4 +56,8 @@ test("builder helpers", () => {
   assert.equal(setTerm("", "waiting", "on qa"), 'waiting:"on qa"');
   assert.equal(getTerm('a waiting:"on qa"', "waiting"), "on qa");
   assert.deepEqual(parse("-is:draft x"), [{ neg: true, key: "is", value: "draft" }, { neg: false, key: "text", value: "x" }]);
+  assert.equal(flipTerm("x author:a", "author", "b"), "x author:b", "one author at a time");
+  assert.equal(flipTerm("x author:b", "author", "b"), "x", "same value turns it off");
+  assert.equal(flipTerm("is:urgent", "is", "stale"), "is:urgent is:stale", "is: stacks");
+  assert.equal(flipTerm("is:urgent is:stale", "is", "urgent"), "is:stale");
 });
