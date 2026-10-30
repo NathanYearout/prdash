@@ -1,7 +1,7 @@
 // prdash page. One Alpine component; data comes from the local server (/api/state) and live updates over SSE.
 import Alpine from "../vendor/alpine.esm.js";
-import { compile, getTerm, setTerm, sinceReview, SYNTAX } from "./filter.js";
-import { card, md, row } from "./render.js";
+import { compile, flipTerm, getTerm, setTerm, sinceReview, SYNTAX } from "./filter.js";
+import { card, md, patch, row } from "./render.js";
 
 const DAY = 864e5;
 
@@ -138,10 +138,6 @@ function memo(name, deps, fn) {
   return value;
 }
 const COL_LIMIT = 40;
-// A column's x-html depends on both its x-for scope and `rev` (cards read local data). Alpine runs an effect once
-// per flush, so after a sync the column could render before x-for handed it the new column, then miss the refresh.
-// Keying columns by board generation gives every recomputed board fresh column elements.
-let BOARD_GEN = 0;
 // PR data lives outside Alpine's reactivity (proxying 250 PRs made every read during filtering and rendering
 // pay for dependency tracking). Alpine watches `rev` instead; __v_skip keeps @vue/reactivity from wrapping it.
 const raw = o => Object.defineProperty(o, "__v_skip", { value: true });
@@ -157,14 +153,16 @@ Alpine.data("prdash", () => ({
   settingsTab: "Appearance", events: [],
   standup: { window: "yesterday", text: "", summary: "", view: "details", loading: false, summarizing: false }, builderOpen: false, saved: [], more: {}, setup: null,
   notifyPermission: "Notification" in window ? Notification.permission : "unsupported", naming: null, tagging: null, lastPicked: null,
+  pending: "", visual: null, tsel: null,
 
   init() {
     try { Object.assign(this, JSON.parse(localStorage.prdash || "{}")); } catch {}
     try { this.saved = JSON.parse(localStorage.prdashFilters || "[]"); } catch {}
+    this.cfg = { team_view: localStorage.prdashTeam !== "0" }; // so the Team tab doesn't pop in and shift the header on load
     PERSISTED.forEach(k => this.$watch(k, () => {
       try { localStorage.prdash = JSON.stringify(Object.fromEntries(PERSISTED.map(k => [k, this[k]]))); } catch {}
     }));
-    this.$watch("sel", url => { this.convoAll = false; url && this.loadDetail(url); });
+    this.$watch("sel", url => { this.convoAll = false; this.tsel = null; url && this.loadDetail(url); });
     this.load();
     this.connect();
     setInterval(() => (this.now = Date.now()), 30_000);
@@ -177,6 +175,7 @@ Alpine.data("prdash", () => ({
       const d = await api("/api/state");
       LOCAL = raw(d.local); delete d.local;
       STORE = raw(d); this.cfg = d.config; this.rev++;
+      try { localStorage.prdashTeam = d.config.team_view ? "1" : "0"; } catch {}
       this.status = { syncing: d.syncing, at: d.at, error: d.error };
       if (!d.config.setup_done && !d.config.demo && !this.setup) this.openSetup();
     } catch (e) { this.toast(e.message, true); }
@@ -227,13 +226,13 @@ Alpine.data("prdash", () => ({
   get board() {
     const list = this.list, { preset, scope, rev, more, q, heat } = this;
     return memo("board", [list, preset, scope, rev, more, q, heat], () => {
-      const want = PRESETS[preset].statuses, groups = {}, gen = ++BOARD_GEN;
+      const want = PRESETS[preset].statuses, groups = {};
       for (const p of list) (groups[p.status] ||= []).push(p);
       // urgent first, then your priority; stable, so the chosen sort holds within each
       const byPrio = (a, b) => (!!b.urgent - !!a.urgent) || (heat && a.created.localeCompare(b.created)) || (this.L(b).prio || 0) - (this.L(a).prio || 0);
       return STATUSES.filter(s => (!want || want.includes(s.key)) && !(s.key === "merged" && scope === "review")).map(s => {
         const all = (groups[s.key] || []).sort(byPrio);
-        return { ...s, id: `${s.key}:${gen}`, total: all.length, prs: more[s.key] ? all : all.slice(0, COL_LIMIT) };
+        return { ...s, total: all.length, prs: more[s.key] ? all : all.slice(0, COL_LIMIT) };
       }).filter((c, _, cols) => !this.q.trim() || c.total || cols.every(x => !x.total)); // filtering: hide empty columns
     });
   },
@@ -309,8 +308,10 @@ Alpine.data("prdash", () => ({
   jira(key) { return this.data?.jira?.[key]; },
 
   // ---- rendering (see render.js)
-  colHTML(col) { return col.prs.map(p => card(this, p)).join(""); },
-  tableHTML() { return this.list.map(p => row(this, p)).join(""); },
+  // Each column reads its cards from `board` by key, not from its x-for scope: Alpine can run this effect before x-for
+  // hands the element its new column, and it would render the old one. Only the visible layout renders.
+  fillCol(el, key) { patch(el, this.layout !== "board" ? [] : (this.board.find(c => c.key === key)?.prs || []).map(p => [p.url, card(this, p)])); },
+  fillTable(el) { patch(el, this.layout !== "table" ? [] : this.list.map(p => [p.url, row(this, p)])); },
   paint() { // sel / focus / picked as classes: cheap, and keeps j/k from re-rendering the board
     const { sel, focus, picked } = this;
     requestAnimationFrame(() => {
@@ -410,7 +411,7 @@ Alpine.data("prdash", () => ({
     const t = e.target.value; e.target.value = "";
     if (t.trim()) this.addTags(p, t);
   },
-  snooze(p, days) { this.setLocal(p, "snooze", days ? plusDays(days) : null); if (days) this.toast(`Snoozed until ${plusDays(days)}`); },
+  snooze(p, days) { if (days) this.toast(`Snoozed until ${plusDays(days)}`); return this.setLocal(p, "snooze", days ? plusDays(days) : null); },
   async copy(text, msg) {
     try { await navigator.clipboard.writeText(text); this.toast(msg || "Copied"); }
     catch (e) { this.toast("Clipboard blocked: " + e.message, true); }
@@ -434,6 +435,7 @@ Alpine.data("prdash", () => ({
   async act(op, p, extra = {}) {
     if (["merge", "automerge", "close", "approve"].includes(op) && this.armed !== op + p.url) {
       this.armed = op + p.url;
+      this.toast(`Press again to ${{ automerge: "turn on auto-merge", close: "close the PR" }[op] || op}`); // keys can't see the armed button
       return setTimeout(() => this.armed === op + p.url && (this.armed = null), 3000);
     }
     this.armed = null; this.busy = { ...this.busy, [op + p.url]: true };
@@ -730,7 +732,99 @@ Alpine.data("prdash", () => ({
     window.scrollTo({ top: 0, behavior: "smooth" });
   },
 
-  // ---- keyboard
+  // ---- keyboard, vim-style. One table drives the keys, the which-key hint after a prefix, and the help panel.
+  // [group, keys, what, run]: "gg" makes g a prefix, " m" is Space then m (the leader, for less frequent PR actions), "C-d" is Ctrl+d, no run means it's handled elsewhere (shown in help only).
+  // PR keys act on the open PR, else the focused one.
+  keymap() {
+    const p = this.cur || this.data?.prs[this.focus], ai = this.cfg.ai_name || "AI", on = f => () => p && f(p);
+    const thread = () => this.sel && this.threads().find(t => t.id === this.tsel);
+    return [
+      ["Move", ["j", "ArrowDown"], "Next PR (with a PR open, walks the queue)", () => this.move(1)],
+      ["Move", ["k", "ArrowUp"], "Previous PR", () => this.move(-1)],
+      ["Move", ["h", "ArrowLeft"], "Column to the left", () => this.moveCol(-1)],
+      ["Move", ["l", "ArrowRight"], "Column to the right", () => this.moveCol(1)],
+      ["Move", ["gg", "G"], "First · last PR", null],
+      ["Move", ["gg"], null, () => this.move(-Infinity)], ["Move", ["G"], null, () => this.move(Infinity)],
+      ["Move", ["C-d", "C-u"], "Half page down · up (scrolls the PR when one is open)", null],
+      ["Move", ["C-d"], null, () => this.page(1)], ["Move", ["C-u"], null, () => this.page(-1)],
+      ["Move", ["Enter", "o"], "Open the PR", on(p => (this.sel = p.url))],
+      ["Move", ["Escape"], "Close or step back; leaves a text box", null],
+      ["Open PR", ["]", "["], "Next · previous unresolved thread", null],
+      ["Open PR", ["]"], null, () => this.thread(1)], ["Open PR", ["["], null, () => this.thread(-1)],
+      ["Open PR", ["}", "{"], "Next · previous section", null],
+      ["Open PR", ["}"], null, () => this.section(1)], ["Open PR", ["{"], null, () => this.section(-1)],
+      ["Open PR", ["r"], "Reply to the thread (or comment on the PR)", on(() => (thread() ? this.startReply(thread()) : this.focusComposer()))],
+      ["Open PR", ["R"], "Resolve or unresolve the thread", on(p => { const t = thread(); t && this.act(t.resolved ? "thread_unresolve" : "thread_resolve", p, { arg: t.id }); })],
+      ["PR", ["a"], "Approve (press twice)", on(p => this.act("approve", p))],
+      ["PR", ["c"], `Open in ${ai}`, on(p => this.cfg.ai_terminal && this.act("agent", p))],
+      ["PR", ["C"], `${ai} review`, on(p => this.act("review", p))],
+      ["PR", ["m"], "Comment", on(() => this.focusComposer())],
+      ["PR", ["q"], "Request review", on(p => this.openPicker(p))],
+      ["PR", ["e"], "Open in editor", on(p => this.act("editor", p))],
+      ["PR", ["w"], "Create or open worktree", on(p => this.act("worktree", p))],
+      ["PR", ["p"], "Announce in Slack", on(p => this.announce(p))],
+      ["PR", ["y"], "Copy link", on(p => this.copy(p.url, "Link copied"))],
+      ["PR", ["gx", "O"], "Open on GitHub", on(p => window.open(p.url, "_blank"))],
+      ["PR", ["z", "Z"], "Snooze a day · a week", null],
+      ["PR", ["z"], null, on(p => this.dismiss(p, () => this.snooze(p, 1)))], ["PR", ["Z"], null, on(p => this.dismiss(p, () => this.snooze(p, 7)))],
+      ["PR", ["dd"], "Hide (fh shows hidden)", on(p => this.dismiss(p, () => this.setLocal(p, "hidden", !this.L(p).hidden || null)))],
+      ["Space (leader)", [" m"], "Merge (press twice)", on(p => this.act("merge", p))],
+      ["Space (leader)", [" M"], "Merge when ready, or cancel auto-merge", on(p => this.act(p.auto_merge ? "automerge_off" : "automerge", p))],
+      ["Space (leader)", [" r"], "Rebase on the base branch", on(p => this.act("rebase", p))],
+      ["Space (leader)", [" d"], "Mark ready, or back to draft", on(p => this.act(p.draft ? "ready" : "draft", p))],
+      ["Space (leader)", [" x"], "Re-run failed checks", on(p => this.act("rerun", p))],
+      ["Space (leader)", [" g"], "Retry checks until green, or stop", on(p => this.act(this.L(p).retry ? "retry_stop" : "retry", p))],
+      ["Space (leader)", [" q"], "Re-request review from earlier reviewers", on(p => { const r = this.rerequest(p); r ? this.act("rerequest", p, { arg: r.who.join(",") }) : this.toast("Nobody to re-ask yet"); })],
+      ["Space (leader)", [" C"], `${ai} review of changes since mine`, on(p => (this.sinceReview(p) ? this.act("review", p, { arg: "since" }) : this.toast("No new commits since your review")))],
+      ["Space (leader)", [" f"], `Fix review comments with ${ai}`, on(p => this.act("fix", p))],
+      ["Space (leader)", [" c"], "Check out the branch in your clone", on(p => this.act("checkout", p))],
+      ["Space (leader)", [" t"], "Open a terminal there", on(p => this.act("terminal", p))],
+      ["Space (leader)", [" n"], "Mute or unmute notifications", on(p => this.setLocal(p, "muted", !this.L(p).muted || null))],
+      ["Space (leader)", [" w"], "Follow (watch) someone else's PR", on(p => this.setLocal(p, "following", !this.L(p).following || null))],
+      ["Space (leader)", [" X"], "Close the PR (press twice)", on(p => this.act("close", p))],
+      ["Select", ["x"], "Select", on(p => this.toggle(p))],
+      ["Select", ["v"], "Select while moving (visual mode)", () => this.visualMode()],
+      ["Select", ["X"], "Select all", () => this.pickAll()],
+      ["Filter", ["/"], "Search (Enter or Esc goes back to the board)", () => this.$refs.search.focus()],
+      ["Filter", ["ff"], "Filter builder", () => this.openBuilder()],
+      ["Filter", ["fa"], "This PR's author", on(p => this.flip("author", p.author))],
+      ["Filter", ["fr"], "This PR's repo", on(p => this.flip("repo", p.repo))],
+      ["Filter", ["fc"], "CI failing", () => this.flip("ci", "failing")],
+      ["Filter", ["fn"], "New since your review", () => this.flip("is", "new-since-review")],
+      ["Filter", ["fu"], "Urgent", () => this.flip("is", "urgent")],
+      ["Filter", ["fp"], "Next preset (Open, Unfinished, Complete, All)", () => this.nextPreset()],
+      ["Filter", ["fh"], "Show hidden & snoozed", () => (this.showHidden = !this.showHidden)],
+      ["Filter", ["fs"], "Save this filter (then f1–f9 applies it)", () => this.q.trim() && ((this.naming = ""), this.$nextTick(() => this.$refs.naming.focus()))],
+      ...this.saved.slice(0, 9).map((f, i) => ["Filter", [`f${i + 1}`], `Saved: ${f.name}`, () => (this.q = this.q === f.q ? "" : f.q)]),
+      ["Filter", ["fx"], "Clear filters", () => Object.assign(this, { q: "", preset: "open", showHidden: false })],
+      ["View", ["1", "2", "3"], "Mine · Review requested · Team", null],
+      ...Object.keys(SCOPES).map((k, i) => ["View", [`${i + 1}`], null, () => this.setScope(k)]),
+      ["View", ["b", "t"], "Board · table", null],
+      ["View", ["b"], null, () => (this.layout = "board")], ["View", ["t"], null, () => (this.layout = "table")],
+      ["View", ["ga"], "Color PRs by age", () => (this.heat = !this.heat)],
+      ["View", ["i", "u", "s"], "Inbox · standup · insights", null],
+      ["View", ["i"], null, () => this.openInbox()], ["View", ["u"], null, () => this.openStandup()], ["View", ["s"], null, () => this.openInsights()],
+      ["View", ["C-k"], "Command palette: every action and PR", null],
+      ["View", ["S"], "Sync now", () => this.sync()],
+      ["View", [","], "Settings", () => this.openSettings()],
+      ["View", ["?"], "This help", () => (this.panel = "help")],
+    ];
+  },
+  keyLabel(k) {
+    if (k.startsWith(" ")) return k.length > 1 ? "Space " + k.slice(1) : "Space";
+    return { ArrowDown: "Down", ArrowUp: "Up", ArrowLeft: "Left", ArrowRight: "Right", Escape: "Esc", "C-d": "Ctrl d", "C-u": "Ctrl u", "C-k": "Ctrl K" }[k] || k;
+  },
+  // help panel: the described rows, by group
+  get keyHelp() {
+    const g = {};
+    for (const [group, keys, what] of this.keymap()) if (what) (g[group] ||= []).push([keys, what]);
+    return Object.entries(g);
+  },
+  // which-key: what can follow the prefix typed so far
+  get nextKeys() {
+    const n = this.pending.length;
+    return n ? this.keymap().flatMap(([, keys, what, run]) => run ? keys.filter(k => k.length > n && k.startsWith(this.pending)).map(k => [k.slice(n), what]) : []) : [];
+  },
   key(e) {
     const typing = /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName);
     if ((e.ctrlKey || e.metaKey) && e.key === "k") { e.preventDefault(); return this.panel === "palette" ? (this.panel = null) : this.openPalette(); }
@@ -742,40 +836,87 @@ Alpine.data("prdash", () => ({
       else if (e.key === "Escape") this.panel = null;
       return;
     }
-    if (e.key === "Escape") {
-      if (typing) return document.activeElement.blur();
-      return this.panel ? (this.panel = null) : this.picker ? (this.picker = null) : this.sel ? (this.sel = null) : this.builderOpen ? (this.builderOpen = false) : this.clearPicked();
-    }
-    if (typing || e.ctrlKey || e.metaKey || e.altKey) return;
-    const p = this.cur || this.data?.prs[this.focus];
-    const move = d => {
-      const o = this.order, i = o.findIndex(x => x.url === (this.sel || this.focus));
-      const next = o[Math.min(o.length - 1, Math.max(0, i + d))] || o[0];
-      if (!next) return;
-      this.focus = next.url;
-      if (this.sel) this.sel = next.url; // drawer open: j/k walks the queue
-      this.$nextTick(() => { // board and table both render the row; the hidden layout's copy has no box
-        const el = [...document.querySelectorAll(`[data-url="${CSS.escape(next.url)}"]`)].find(e => e.getClientRects().length);
-        if (el) reveal(el);
-      });
-    };
-    const keys = {
-      "/": () => this.$refs.search.focus(), "?": () => (this.panel = "help"), f: () => (this.builderOpen = !this.builderOpen),
-      1: () => this.setScope("mine"), 2: () => this.setScope("review"), 3: () => this.setScope("team"),
-      b: () => (this.layout = "board"), t: () => (this.layout = "table"), r: () => this.sync(),
-      i: () => this.openInbox(), ",": () => this.openSettings(), u: () => this.openStandup(), s: () => this.openInsights(),
-      g: () => (this.heat = !this.heat),
-      j: () => move(1), k: () => move(-1), ArrowDown: () => move(1), ArrowUp: () => move(-1),
-      X: () => this.pickAll(),
-    };
-    const prKeys = p && {
-      Enter: () => (this.sel = p.url), o: () => (this.sel = p.url), O: () => window.open(p.url, "_blank"),
-      x: () => this.toggle(p), c: () => this.cfg.ai_terminal && this.act("agent", p), v: () => this.act("review", p), e: () => this.act("editor", p),
-      w: () => this.act("worktree", p), p: () => this.announce(p), a: () => this.act("approve", p), y: () => this.copy(p.url, "Link copied"),
-      q: () => this.openPicker(p), z: () => this.snooze(p, 1), h: () => this.setLocal(p, "hidden", !this.L(p).hidden), m: () => this.focusComposer(),
-    };
-    const fn = keys[e.key] || prKeys?.[e.key];
-    if (fn) { e.preventDefault(); fn(); }
+    if (e.key === "Escape") return typing ? document.activeElement.blur() : this.back();
+    if (typing || e.metaKey || e.altKey || ["Shift", "Control"].includes(e.key)) return; // Shift alone mustn't cancel a prefix before G
+    const seq = this.pending + (e.ctrlKey ? "C-" : "") + e.key, keys = this.keymap().filter(k => k[3]);
+    const hit = keys.find(k => k[1].includes(seq));
+    const prefix = !hit && !e.ctrlKey && keys.some(k => k[1].some(x => x.length > seq.length && x.startsWith(seq)));
+    this.pending = prefix ? seq : "";
+    if (hit || prefix) e.preventDefault();
+    if (hit) hit[3]();
+  },
+  back() { // Esc: close whatever is innermost
+    if (this.pending) return (this.pending = "");
+    if (this.visual) return (this.visual = null);
+    if (this.panel) return (this.panel = null);
+    if (this.picker) return (this.picker = null);
+    if (this.sel) return (this.sel = null);
+    if (this.builderOpen) return (this.builderOpen = false);
+    this.clearPicked();
+  },
+  // focus a PR and scroll to it; an open PR follows, and visual mode extends the selection
+  show(url) {
+    this.focus = url;
+    if (this.sel) this.sel = url;
+    if (this.visual) this.pickRange();
+    this.$nextTick(() => { // board and table both render the row; the hidden layout's copy has no box
+      const el = [...document.querySelectorAll(`[data-url="${CSS.escape(url)}"]`)].find(e => e.getClientRects().length);
+      if (el) reveal(el);
+    });
+  },
+  move(d) { // ±Infinity goes to either end
+    const o = this.order, i = o.findIndex(x => x.url === (this.sel || this.focus));
+    const next = o[Math.min(o.length - 1, Math.max(0, i + d))] || o[0];
+    if (next) this.show(next.url);
+  },
+  moveCol(d) { // h/l on the board: same row in the next column that has cards
+    if (this.layout !== "board") return;
+    const cols = this.board.filter(c => c.prs.length), u = this.sel || this.focus;
+    const c = cols.findIndex(x => x.prs.some(p => p.url === u)), row = c < 0 ? 0 : cols[c].prs.findIndex(p => p.url === u);
+    const to = cols[Math.min(cols.length - 1, Math.max(0, c + d))];
+    if (to) this.show(to.prs[Math.min(row, to.prs.length - 1)].url);
+  },
+  page(d) { // half a screen of the open PR, else ten PRs
+    const box = this.sel && this.$refs.drawer;
+    if (box) box.scrollBy({ top: d * box.clientHeight / 2, behavior: "smooth" });
+    else this.move(d * 10);
+  },
+  section(d) { // { }: scroll the open PR to the previous / next section
+    const box = this.sel && this.$refs.drawer;
+    if (!box) return;
+    const top = box.getBoundingClientRect().top;
+    const ys = [...box.querySelectorAll("section")].filter(s => s.getClientRects().length).map(s => s.getBoundingClientRect().top - top);
+    const y = d > 0 ? ys.find(y => y > 2) : ys.findLast(y => y < -2);
+    box.scrollBy({ top: y ?? (d > 0 ? box.scrollHeight : -box.scrollTop), behavior: "smooth" });
+  },
+  thread(d) { // ] [: next / previous unresolved review thread in the open PR
+    if (!this.sel) return;
+    const all = this.threads(), i = all.findIndex(t => t.id === this.tsel);
+    const t = d > 0 ? all.find((t, j) => j > i && !t.resolved) : all.findLast((t, j) => j < (i < 0 ? all.length : i) && !t.resolved);
+    if (!t) return this.toast(all.some(t => !t.resolved) ? `No ${d > 0 ? "later" : "earlier"} unresolved threads` : "No unresolved threads");
+    this.tsel = t.id;
+    this.$nextTick(() => document.getElementById("t-" + t.id)?.scrollIntoView({ block: "center", behavior: "smooth" }));
+  },
+  async dismiss(p, fn) { // z, Z, dd: the PR leaves the board, so focus moves to its neighbour
+    const o = this.order, i = o.indexOf(p), next = o[i + 1] || o[i - 1];
+    await fn();
+    if (next && !this.order.includes(p)) this.show(next.url);
+  },
+  visualMode() { // v: everything you move over gets selected, on top of what already was
+    if (this.visual) return (this.visual = null);
+    const u = this.sel || this.focus || this.order[0]?.url;
+    if (!u) return;
+    this.focus = u; this.visual = { from: u, base: { ...this.picked } }; this.pickRange();
+  },
+  pickRange() {
+    const o = this.order.map(p => p.url), [a, b] = [o.indexOf(this.visual.from), o.indexOf(this.sel || this.focus)].sort((x, y) => x - y);
+    this.picked = { ...this.visual.base, ...(a < 0 ? {} : Object.fromEntries(o.slice(a, b + 1).map(u => [u, true]))) };
+  },
+  flip(key, value) { this.q = flipTerm(this.q, key, value); },
+  nextPreset() { const k = Object.keys(PRESETS); this.preset = k[(k.indexOf(this.preset) + 1) % k.length]; },
+  openBuilder() {
+    this.builderOpen = !this.builderOpen;
+    if (this.builderOpen) this.$nextTick(() => document.querySelector(".builder input, .builder select")?.focus());
   },
 
   toast(msg, err = false) {

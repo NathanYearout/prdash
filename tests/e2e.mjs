@@ -126,6 +126,26 @@ check("snooze hides PR", !(await app(`a.list.some(p => p.url === ${JSON.stringif
 await app(`Promise.all(["waiting", "tags", "snooze"].map(f => a.setLocal({ url: ${JSON.stringify(url)} }, f, null)))`); await sleep(300);
 check("cleanup restores PR", await app(`a.list.some(p => p.url === ${JSON.stringify(url)})`));
 
+// vim motions, the f prefix, and keeping cards across re-renders. Keys go 50ms apart, still faster than anyone types:
+// back to back in one frame, Alpine's x-show throws when an element hides and shows again.
+const press = async (...ks) => { for (const k of ks) { await key(k); await sleep(50); } };
+await app(`(a.sel = null, a.focus = a.order[0].url)`); await press("l");
+check("l moves to the next column", await app(`a.board.findIndex(c => c.prs.some(p => p.url === a.focus)) > 0`));
+await press("h", "G"); check("G goes to the last PR", await app(`a.focus === a.order.at(-1).url`));
+await press("g"); check("g waits for a second key and shows what can follow", (await app("a.pending")) === "g" && (await app("a.nextKeys.length")) >= 3);
+await press("g"); check("gg goes to the first PR", await app(`a.pending === "" && a.focus === a.order[0].url`));
+const author = await app("a.cur?.author || a.data.prs[a.focus].author");
+await press("f", "a"); check("fa filters by the focused PR's author", (await app("a.q")) === `author:${author}`);
+await press("f", "a"); check("fa again turns it off", (await app("a.q")) === "");
+await press("f", "c", "f", "x"); check("fx clears filters", (await app("a.q")) === "");
+const kept = await js(`(() => { const c = document.querySelector(".board .col-body > *"); return new Promise(r => { Alpine.$data(document.body).load().then(() => setTimeout(() => r(c.isConnected), 200)); }); })()`);
+check("a reload with nothing changed keeps the cards' DOM", kept);
+await press("v", "j", "j"); check("v selects what you move over", (await app("a.pickedUrls.length")) === 3);
+await press("Escape", "Escape"); check("Esc leaves visual mode, then clears the selection", (await app("a.pickedUrls.length + !!a.visual")) === 0);
+await press(" "); check("Space is a leader that lists PR actions", (await app("a.pending")) === " " && (await app("a.nextKeys.length")) >= 10
+  && await js(`!document.querySelector(".whichkey").hidden`));
+await press("Escape"); check("Esc cancels a pending prefix", (await app("a.pending")) === "" && await js(`document.querySelector(".whichkey").hidden`));
+
 // selection + batch bar (local-only action)
 await app(`a.focus = a.order[0].url`); await key("x"); await key("j"); await key("x"); await sleep(150);
 check("x selects", (await app("a.pickedUrls.length")) === 2);
@@ -150,7 +170,9 @@ await shot("12-standup");
 await app(`a.loadStandup("last_week")`);
 check("last week window", await waitFor(`/^Last week/.test(Alpine.$data(document.body).standup.text)`, 30000), (await app("a.standup.text")).split("\n")[0]);
 await shot("12b-standup-last-week"); await key("Escape");
-await key("?"); await sleep(200); await shot("13-help"); await key("Escape");
+await key("?"); await sleep(200); await shot("13-help");
+check("help lists every key and syntax line with its description", await js(`[...document.querySelectorAll(".help-grid .keys")].every(dl => dl.querySelectorAll("dt").length === dl.querySelectorAll("dd").length) && document.querySelectorAll(".help-grid dd").length > 50`));
+await key("Escape");
 
 // a sync where nothing changed shouldn't refetch or re-render (informational: real PRs can change mid-test)
 const rev0 = await app("a.rev");
@@ -212,9 +234,9 @@ check("a fork's branch never counts as a stack base", await app(`(() => {
   const was = [f.branch, f.fork]; f.branch = g.base; f.fork = true; a.rev++;
   const ok = !a.stack(g).includes(f); [f.branch, f.fork] = was; a.rev++; return ok;
 })()`));
-await key("g"); await sleep(300);
-check("g colors open cards by age", await js(`document.querySelectorAll(".board .card.heat").length > 0 && !!document.querySelector(".heat-legend:not([style*='none'])")`));
-await key("g"); await sleep(200);
+await key("g"); await key("a"); await sleep(300);
+check("ga colors open cards by age", await js(`document.querySelectorAll(".board .card.heat").length > 0 && !!document.querySelector(".heat-legend:not([style*='none'])")`));
+await key("g"); await key("a"); await sleep(200);
 await app(`(a.focus = a.order[0]?.url)`); await key("m");
 check("m opens the PR and focuses the comment box", await waitFor(`document.activeElement === Alpine.$data(document.body).$refs.composer`, 3000));
 await js(`(() => { const el = document.activeElement; el.value = "cc @"; el.dispatchEvent(new Event("input")); })()`); await sleep(100);
