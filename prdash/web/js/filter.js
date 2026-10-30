@@ -133,3 +133,9 @@ export function setTerm(q, key, value) {
   const v = /\s/.test(value) ? `"${value}"` : value;
   return `${rest} ${key}:${v}`.trim();
 }
+// The f keys: a term goes off if it's there, else on. is: and has: stack (is:urgent is:stale); other keys hold one value.
+export function flipTerm(q, key, value) {
+  const t = `${key}:${value}`, words = q.split(/\s+/).filter(Boolean);
+  if (words.includes(t)) return words.filter(w => w !== t).join(" ");
+  return ["is", "has"].includes(key) ? [...words, t].join(" ") : setTerm(q, key, value);
+}

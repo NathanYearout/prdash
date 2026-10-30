@@ -232,6 +232,8 @@ main { padding: 18px 24px 60px; }
 .skel.short { height: 80px; }
 .skel:hover { transform: none; border-color: var(--line); }
 .skel-h { height: 26px; width: 40%; border-radius: 6px; background: var(--card); margin-bottom: 4px; }
+.row-skel { height: 34px; border-radius: 6px; margin-bottom: 6px; }
+b.skel { display: inline-block; width: 1.6em; height: 1em; border-radius: 4px; animation-duration: 1.4s; }
 
 /* ---- table ---- */
 .tbl-wrap { overflow-x: auto; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
@@ -479,6 +481,20 @@ main { padding: 18px 24px 60px; }
 .keys { display: grid; grid-template-columns: auto 1fr; gap: 8px 14px; margin: 0; font-size: 12.5px; align-items: baseline; }
 .keys dt { white-space: nowrap; } .keys dd { margin: 0; color: var(--muted); }
 .keys.syntax { grid-template-columns: 1fr; gap: 2px; } .keys.syntax dd { margin-bottom: 8px; }
+.krow { display: contents; } /* one x-for root per dt/dd pair */
+.keys dt kbd + kbd { margin-left: 4px; }
+.help-grid { grid-template-columns: 1.7fr 1fr; }
+.help-grid h3 span { font-weight: 400; margin-left: 6px; }
+.keygroups { columns: 2; column-gap: 28px; }
+.keygroups > div { break-inside: avoid; margin-bottom: 16px; }
+.keygroups h4 { margin: 0 0 8px; font: 600 11px var(--sans); color: var(--dim); text-transform: uppercase; letter-spacing: .07em; }
+.cthread.on { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
+/* which-key: what a prefix (g f d) can be followed by, and the visual-mode marker */
+.whichkey { position: fixed; right: 20px; bottom: 20px; z-index: 20; padding: 10px 14px; border-radius: 10px; background: var(--card);
+  border: 1px solid var(--line-hi); box-shadow: var(--shadow); max-width: 360px; }
+.whichkey[hidden] { display: none; }
+.whichkey > b { display: block; font: 600 12px var(--mono); color: var(--accent); }
+.whichkey .keys { margin-top: 8px; gap: 4px 12px; }
 .standup { padding: 22px 24px; }
 .standup textarea { width: 100%; font: 12.5px/1.55 var(--mono); }
 .standup-bar { display: flex; gap: 10px; flex-wrap: wrap; justify-content: space-between; }
@@ -529,6 +545,7 @@ main { padding: 18px 24px 60px; }
   .settings nav { border-right: 0; border-bottom: 1px solid var(--line); flex-direction: row; flex-wrap: wrap; }
   .settings nav p { display: none; }
   .help-grid, .tools { grid-template-columns: 1fr; }
+  .keygroups { columns: 1; }
   .modal > .setup { padding: 22px 18px; }
   .setup-foot { flex-direction: column; align-items: stretch; }
 }
