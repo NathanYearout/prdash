@@ -18,15 +18,15 @@
     <nav class="seg">
       <template x-for="(label, k) in SCOPES" :key="k">
         <button :class="{ on: scope === k }" @click="setScope(k)" x-show="k !== 'team' || cfg.team_view">
-          <span x-text="label"></span><b x-show="data" x-text="scopeCount(k)"></b>
+          <span x-text="label"></span><b :class="{ skel: !data }" x-text="data ? scopeCount(k) : ''"></b>
         </button>
       </template>
     </nav>
     <label class="search" :class="{ active: q }">
       <svg class="ic"><use href="/static/icons.svg#search"/></svg>
-      <input x-ref="search" x-model.debounce.80ms="q" placeholder="Filter: author:alice updated:<3d ci:failing, or any text" spellcheck="false">
+      <input x-ref="search" x-model.debounce.80ms="q" @keydown.enter="$el.blur()" placeholder="Filter: author:alice updated:<3d ci:failing, or any text" spellcheck="false">
       <button class="icon-btn" x-show="q" @click="q = ''" title="Clear"><svg class="ic"><use href="/static/icons.svg#x"/></svg></button>
-      <button class="icon-btn" :class="{ on: builderOpen }" @click="builderOpen = !builderOpen" title="Filter builder (f)"><svg class="ic"><use href="/static/icons.svg#sliders-horizontal"/></svg></button>
+      <button class="icon-btn" :class="{ on: builderOpen }" @click="builderOpen = !builderOpen" title="Filter builder (ff)"><svg class="ic"><use href="/static/icons.svg#sliders-horizontal"/></svg></button>
     </label>
     <span class="grow"></span>
     <button class="icon-btn lg" @click="openPalette()" title="Command palette (Ctrl+K)"><kbd>Ctrl K</kbd></button>
@@ -39,7 +39,7 @@
     <button class="icon-btn lg badge-wrap" @click="openInbox()" title="Inbox (i)">
       <svg class="ic"><use href="/static/icons.svg#bell"/></svg><b class="badge" x-show="unread" x-text="unread > 99 ? '99+' : unread"></b>
     </button>
-    <button class="btn ghost sync" @click="sync()" :title="status.error ? 'Last sync failed: ' + status.error : 'Sync now (r)'">
+    <button class="btn ghost sync" @click="sync()" :title="status.error ? 'Last sync failed: ' + status.error : 'Sync now (S)'">
       <svg class="ic" :class="{ spin: status.syncing, bad: status.error }"><use :href="'/static/icons.svg#' + (status.error ? 'triangle-alert' : 'refresh-cw')"/></svg>
       <span class="small dim" x-text="status.syncing ? 'Syncing' : status.at ? ago(status.at * 1000) : ''"></span>
     </button>
@@ -49,7 +49,7 @@
   <div class="bar sub">
     <nav class="chips-row">
       <template x-for="(f, k) in PRESETS" :key="k">
-        <button class="fchip" :class="{ on: preset === k }" @click="preset = k"><span x-text="f.label"></span><b x-text="count(k)"></b></button>
+        <button class="fchip" :class="{ on: preset === k }" @click="preset = k"><span x-text="f.label"></span><b :class="{ skel: !data }" x-text="data ? count(k) : ''"></b></button>
       </template>
       <span class="divider" x-show="saved.length"></span>
       <template x-for="s in saved" :key="s.name">
@@ -64,9 +64,9 @@
       <input class="naming" x-ref="naming" x-show="naming !== null" x-model="naming" placeholder="Filter name, Enter to save"
         @keydown.enter="saveFilter(naming)" @keydown.escape.stop="naming = null" @blur="naming = null">
     </nav>
-    <button class="fchip toggle-chip" :class="{ on: showHidden }" @click="showHidden = !showHidden" title="Show PRs you hid or snoozed">
+    <button class="fchip toggle-chip" :class="{ on: showHidden }" @click="showHidden = !showHidden" title="Show PRs you hid or snoozed (fh)">
       <svg class="ic"><use href="/static/icons.svg#eye-off"/></svg>Hidden &amp; snoozed</button>
-    <button class="fchip toggle-chip" :class="{ on: heat }" @click="heat = !heat" title="Color open PRs by how long they've been open, oldest first in each column (g)">
+    <button class="fchip toggle-chip" :class="{ on: heat }" @click="heat = !heat" title="Color open PRs by how long they've been open, oldest first in each column (ga)">
       <svg class="ic"><use href="/static/icons.svg#thermometer"/></svg>Age</button>
     <span class="heat-legend" x-show="heat" title="Days since each PR opened: green when new, amber around a week, red around a month, tinted red by 6 months">new<i></i>1w<i></i>1mo<i></i>6mo+</span>
     <span class="grow"></span>
@@ -97,18 +97,21 @@
 </header>
 
 <main x-effect="paint(), sel, focus, pickedUrls, board, list, layout">
-  <section class="board" x-show="!data">
+  <section class="board" x-show="!data && layout === 'board'">
     <template x-for="i in 4" :key="i">
       <div class="col"><div class="col-h skel-h"></div><div class="card skel"></div><div class="card skel"></div><div class="card skel short"></div></div>
     </template>
   </section>
+  <div class="tbl-wrap" x-show="!data && layout === 'table'">
+    <template x-for="i in 8" :key="i"><div class="skel row-skel"></div></template>
+  </div>
   <div class="banner" x-show="status.error"><svg class="ic"><use href="/static/icons.svg#triangle-alert"/></svg><span x-text="'Last sync failed: ' + status.error"></span></div>
 
   <section class="board" x-show="data && layout === 'board'">
-    <template x-for="col in board" :key="col.id">
+    <template x-for="col in board" :key="col.key">
       <div class="col" :class="'s-' + col.key">
         <div class="col-h" :title="col.hint"><i class="sdot"></i><span x-text="col.label"></span><b x-text="col.total"></b></div>
-        <div class="col-body" x-html="colHTML(col)" @click="listClick($event)"></div>
+        <div class="col-body" x-effect="fillCol($el, col.key)" @click="listClick($event)"></div>
         <button class="col-more" x-show="col.total > col.prs.length" @click="more = { ...more, [col.key]: true }" x-text="'Show ' + (col.total - col.prs.length) + ' more'"></button>
         <div class="col-empty" x-show="!col.total">Nothing here</div>
       </div>
@@ -124,7 +127,7 @@
         </template>
         <th></th>
       </tr></thead>
-      <tbody x-html="tableHTML()" @click="listClick($event)"></tbody>
+      <tbody x-effect="fillTable($el)" @click="listClick($event)"></tbody>
     </table>
   </div>
   <div class="empty" x-show="data && !list.length">
@@ -152,7 +155,7 @@
 </div>
 
 <div class="scrim" x-show="cur || ['inbox', 'settings', 'standup', 'help', 'insights'].includes(panel)" x-transition.opacity @click="sel = null; panel = null"></div>
-<aside class="drawer" x-show="cur && !panel" x-transition:enter-start="off" x-transition:leave-end="off">
+<aside class="drawer" x-ref="drawer" x-show="cur && !panel" x-transition:enter-start="off" x-transition:leave-end="off">
   <template x-if="pane">
     <div>
       <div class="d-head">
@@ -160,8 +163,8 @@
         <a class="mono small nowrap" :href="pane.url" target="_blank" :title="pane.owner + '/' + pane.repo"><span x-text="pane.repo + '#' + pane.number"></span><svg class="ic"><use href="/static/icons.svg#external-link"/></svg></a>
         <span class="grow"></span>
         <span class="dim small nowrap" x-show="order.some(p => p.url === sel)" x-text="(order.findIndex(p => p.url === sel) + 1) + ' of ' + order.length"></span>
-        <button class="icon-btn" @click="key({ key: 'k', preventDefault() {} })" title="Previous (k)"><svg class="ic"><use href="/static/icons.svg#chevron-left"/></svg></button>
-        <button class="icon-btn" @click="key({ key: 'j', preventDefault() {} })" title="Next (j)"><svg class="ic"><use href="/static/icons.svg#chevron-right"/></svg></button>
+        <button class="icon-btn" @click="move(-1)" title="Previous (k)"><svg class="ic"><use href="/static/icons.svg#chevron-left"/></svg></button>
+        <button class="icon-btn" @click="move(1)" title="Next (j)"><svg class="ic"><use href="/static/icons.svg#chevron-right"/></svg></button>
         <button class="close" @click="sel = null" title="Close (esc)"><svg class="ic"><use href="/static/icons.svg#x"/></svg></button>
       </div>
       <h2 x-text="pane.title"></h2>
@@ -196,7 +199,7 @@
       </div>
       <div class="quick">
         <button class="btn primary" x-show="cfg.ai_terminal" @click="act('agent', pane)" title="c"><svg class="ic"><use href="/static/icons.svg#sparkles"/></svg><span x-text="'Open in ' + cfg.ai_name"></span></button>
-        <button class="btn" @click="act('review', pane)" :disabled="review(pane).status === 'running'" title="v"><svg class="ic" :class="{ spin: review(pane).status === 'running' }"><use href="/static/icons.svg#sparkles"/></svg><span x-text="review(pane).status === 'running' ? 'Reviewing…' : (review(pane).status ? 'Re-run ' : '') + cfg.ai_name + ' review'"></span></button>
+        <button class="btn" @click="act('review', pane)" :disabled="review(pane).status === 'running'" title="C"><svg class="ic" :class="{ spin: review(pane).status === 'running' }"><use href="/static/icons.svg#sparkles"/></svg><span x-text="review(pane).status === 'running' ? 'Reviewing…' : (review(pane).status ? 'Re-run ' : '') + cfg.ai_name + ' review'"></span></button>
         <button class="btn" @click="announce(pane)" x-show="!pane.merged" title="p"><svg class="ic"><use :href="'/static/icons.svg#' + (cfg.slack ? 'send' : 'hash')"/></svg><span x-text="cfg.slack ? 'Post to ' + (cfg.slack_channel || 'Slack') : 'Copy Slack post'"></span></button>
         <button class="btn" x-show="!pane.merged && pane.state === 'OPEN'" :class="{ on: picker?.url === pane.url }" @click="picker?.url === pane.url ? (picker = null) : openPicker(pane)" title="q"><svg class="ic"><use href="/static/icons.svg#user-plus"/></svg>Request review</button>
         <a class="btn" :href="pane.url + '/files'" target="_blank"><svg class="ic"><use href="/static/icons.svg#file-diff"/></svg>Files</a>
@@ -242,7 +245,7 @@
       </section>
 
       <section>
-        <h4><svg class="ic"><use href="/static/icons.svg#message-square"/></svg> Conversation
+        <h4 title="] and [ step through unresolved threads, r replies, R resolves"><svg class="ic"><use href="/static/icons.svg#message-square"/></svg> Conversation
           <span x-show="convoCount()" x-text="convoCount()"></span>
           <span class="amber" x-show="openThreads()" x-text="openThreads() + ' unresolved'"></span>
           <button class="btn sm" x-show="canFix(pane)" @click="act('fix', pane)" :title="'Opens ' + cfg.ai_name + ' in a worktree with the unresolved feedback loaded. It asks before changing files and never pushes.'">
@@ -270,7 +273,7 @@
               <template x-if="g.type === 'thread'">
                 <div class="ce" x-data="{ show: !g.t.resolved }">
                   <span class="node" :class="{ done: g.t.resolved }"><svg class="ic"><use :href="'/static/icons.svg#' + (g.t.resolved ? 'circle-check' : 'code')"/></svg></span>
-                  <div class="cthread" :class="{ resolved: g.t.resolved }">
+                  <div class="cthread" :id="'t-' + g.t.id" :class="{ resolved: g.t.resolved, on: tsel === g.t.id }">
                     <div class="cthread-h">
                       <a :href="g.t.url" target="_blank" x-text="g.t.path + (g.t.line ? ':' + g.t.line : '')"></a>
                       <span class="tagline" x-show="g.t.outdated" title="The code this comment was on has changed since">outdated</span>
@@ -323,7 +326,7 @@
         <div class="dim small" x-show="!detail.conversation && !detail.conversation_error">Loading…</div>
         <div class="err small" x-show="detail.conversation_error" x-text="detail.conversation_error"></div>
         <div class="reply" x-show="!pane.merged">
-          <textarea rows="2" x-ref="composer" @input="mentionInput" @keydown="mentionKey" @blur="mention = null" x-model="cbody" aria-label="Comment" placeholder="Leave a comment (m to jump here, @ to mention, Ctrl Enter to send)" @keydown.ctrl.enter="cbody && act('comment', pane)" @keydown.meta.enter="cbody && act('comment', pane)"></textarea>
+          <textarea rows="2" x-ref="composer" @input="mentionInput" @keydown="mentionKey" @blur="mention = null" x-model="cbody" aria-label="Comment" placeholder="Leave a comment (m or r to jump here, @ to mention, Ctrl Enter to send)" @keydown.ctrl.enter="cbody && act('comment', pane)" @keydown.meta.enter="cbody && act('comment', pane)"></textarea>
           <div class="acts">
             <template x-if="pane.author !== data?.me"><button class="btn" @click="act('request_changes', pane)" :disabled="isBusy('request_changes', pane)">Request changes</button></template>
             <template x-if="pane.author !== data?.me"><button class="btn go" :class="{ armed: armed === 'approve' + pane.url }" @click="act('approve', pane)" :disabled="isBusy('approve', pane)"><svg class="ic"><use href="/static/icons.svg#check"/></svg><span x-text="armed === 'approve' + pane.url ? 'Click to confirm' : 'Approve'"></span></button></template>
@@ -647,26 +650,27 @@
   </div>
 </div>
 
-<div class="modal" x-show="panel === 'help'" x-transition.opacity>
+<div class="modal wide" x-show="panel === 'help'" x-transition.opacity>
   <div class="help-grid">
     <button class="close abs" @click="panel = null"><svg class="ic"><use href="/static/icons.svg#x"/></svg></button>
     <div>
-      <h3>Keyboard</h3>
-      <dl class="keys">
-        <dt><kbd>Ctrl K</kbd></dt><dd>Command palette</dd><dt><kbd>/</kbd> <kbd>f</kbd></dt><dd>Search · filter builder</dd>
-        <dt><kbd>j</kbd> <kbd>k</kbd></dt><dd>Next / previous PR (walks the queue with the panel open)</dd>
-        <dt><kbd>Enter</kbd></dt><dd>Open PR</dd><dt><kbd>x</kbd> <kbd>X</kbd></dt><dd>Select · select all</dd>
-        <dt><kbd>c</kbd> <kbd>v</kbd></dt><dd>Open in your AI · AI review</dd><dt><kbd>e</kbd> <kbd>w</kbd></dt><dd>Editor · worktree</dd>
-        <dt><kbd>p</kbd> <kbd>y</kbd></dt><dd>Announce in Slack · copy link</dd><dt><kbd>a</kbd></dt><dd>Approve (press twice)</dd>
-        <dt><kbd>z</kbd> <kbd>h</kbd></dt><dd>Snooze a day · hide</dd><dt><kbd>O</kbd></dt><dd>Open on GitHub</dd>
-        <dt><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd></dt><dd>Mine · Review requested · Team</dd><dt><kbd>b</kbd> <kbd>t</kbd></dt><dd>Board · table</dd>
-        <dt><kbd>m</kbd> <kbd>q</kbd></dt><dd>Comment on the PR · request review</dd><dt><kbd>g</kbd></dt><dd>Color PRs by age</dd>
-        <dt><kbd>i</kbd> <kbd>u</kbd> <kbd>s</kbd></dt><dd>Inbox · standup · insights</dd><dt><kbd>,</kbd> <kbd>r</kbd></dt><dd>Settings · sync now</dd>
-      </dl>
+      <h3>Keyboard <span class="dim small">vim-style; g, f, d, and Space wait for a second key and show what can follow</span></h3>
+      <div class="keygroups">
+        <template x-for="[group, rows] in keyHelp" :key="group">
+          <div>
+            <h4 x-text="group"></h4>
+            <dl class="keys">
+              <template x-for="[keys, what] in rows" :key="what">
+                <div class="krow"><dt><template x-for="k in keys" :key="k"><kbd x-text="keyLabel(k)"></kbd></template></dt><dd x-text="what"></dd></div>
+              </template>
+            </dl>
+          </div>
+        </template>
+      </div>
     </div>
     <div>
       <h3>Filter syntax</h3>
-      <dl class="keys syntax"><template x-for="[ex, what] in SYNTAX" :key="ex"><dt><code x-text="ex"></code></dt><dd x-text="what"></dd></template></dl>
+      <dl class="keys syntax"><template x-for="[ex, what] in SYNTAX" :key="ex"><div class="krow"><dt><code x-text="ex"></code></dt><dd x-text="what"></dd></div></template></dl>
     </div>
   </div>
 </div>
@@ -748,5 +752,9 @@
   </template>
 </ul>
 <div class="toast" :class="{ show: toastMsg, err: toastErr }" x-text="toastMsg"></div>
+<div class="whichkey" :hidden="!pending && !visual"> <!-- not x-show: Alpine throws when it hides and re-shows within a frame, as fast prefixes do -->
+  <b x-text="visual ? '-- VISUAL --  move to select, v or Esc to stop' : keyLabel(pending)"></b>
+  <dl class="keys"><template x-for="[k, what] in nextKeys" :key="k"><div class="krow"><dt><kbd x-text="keyLabel(k)"></kbd></dt><dd x-text="what"></dd></div></template></dl>
+</div>
 </body>
 </html>

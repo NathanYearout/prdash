@@ -1,4 +1,4 @@
-// Cards and table rows render as HTML strings, one x-html per column/table, with click delegation via data-act.
+// Cards and table rows render as HTML strings, patched into each column/table (patch below), with click delegation via data-act.
 // Alpine per-element bindings cost ~10ms per card at this density; strings render 200 cards in a few ms.
 
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -92,6 +92,26 @@ export function row(a, p) {
   <td class="note-cell">${esc(l.note)}</td>
   <td>${a.cfg.ai_terminal ? `<button class="mini accent icon-only" data-act="agent" title="Open in ${esc(a.cfg.ai_name)}">${icon("sparkles")}</button>` : ""}</td>
 </tr>`;
+}
+
+// Puts [[key, html]] into el, keeping the DOM of every card whose HTML hasn't changed. Rewriting innerHTML on each
+// sync or filter keystroke rebuilt every card, so lazy-loaded avatars blanked and the urgent ring restarted.
+export function patch(el, items) {
+  const want = new Set(items.map(([k]) => k)), old = new Map();
+  for (const n of [...el.children]) want.has(n._key) ? old.set(n._key, n) : n.remove();
+  let at = el.firstElementChild;
+  for (const [key, html] of items) {
+    let n = old.get(key);
+    if (n?._html !== html) {
+      const t = document.createElement("template");
+      t.innerHTML = html;
+      const fresh = Object.assign(t.content.firstElementChild, { _key: key, _html: html });
+      if (n) { n.replaceWith(fresh); if (at === n) at = fresh; }
+      n = fresh;
+    }
+    if (n === at) at = at.nextElementSibling;
+    else el.insertBefore(n, at);
+  }
 }
 
 // GitHub markdown for PR descriptions and comments: everything is escaped first, then a small subset is turned back into tags
