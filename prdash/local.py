@@ -99,12 +99,9 @@ def checked_out_at(cwd, branch):
 
 
 def worktree(pr):
-    """The PR's worktree, on its latest push. One with uncommitted changes is left exactly as it is.
-    If the branch is already checked out elsewhere (your clone, say), that checkout is used as is."""
+    """The PR's worktree, on its latest push. One with uncommitted changes is left exactly as it is."""
     wt, cwd = worktree_dir(pr), need(clone_dir(pr))
     git("fetch", "--quiet", "origin", cwd=cwd)
-    if (other := checked_out_at(cwd, pr["branch"])) and Path(other).resolve() != wt.resolve():
-        return other
     if (wt / ".git").exists():
         if not git("status", "--porcelain", "--untracked-files=no", cwd=wt):
             checkout_latest(pr, wt)
@@ -121,8 +118,12 @@ def worktree(pr):
 
 def checkout_latest(pr, wt):
     """Put wt on the PR's branch at its latest push (gh also handles forks). Your local copy of the branch is reset only
-    when every commit on it is also on GitHub, matched by patch so a rebased-and-force-pushed branch still counts."""
+    when every commit on it is also on GitHub, matched by patch so a rebased-and-force-pushed branch still counts.
+    If the branch is checked out somewhere else (git allows one place per branch), wt gets the latest push detached."""
     b = pr["branch"]
+    if (other := checked_out_at(wt, b)) and Path(other).resolve() != Path(wt).resolve():
+        gh("pr", "checkout", str(pr["number"]), "--detach", cwd=wt)
+        return
     try:
         safe = "+" not in git("cherry", f"origin/{b}", b, cwd=wt)
     except RuntimeError:  # no local copy yet, or the branch isn't on origin
@@ -187,7 +188,7 @@ def fix(pr, conversation):
     if len(feedback) > 40_000:
         feedback = feedback[:40_000] + "\n[more feedback truncated; see the PR on GitHub]"
     cwd = Path(worktree(pr))
-    prompt = (f"You're in a worktree for {pr['url']} ({pr['title']}), on its branch. Reviewers left the feedback below. "
+    prompt = (f"You're in a worktree for {pr['url']} ({pr['title']}), on its latest push. Reviewers left the feedback below. "
               "Go through it one item at a time: make the change if it's right, or tell me why you'd push back. "
               "General comments can't be marked resolved, so skip any the code already addresses, and ignore bot noise. "
               "Don't commit or push; I'll review your changes first. Finish with a short list of what you did for each item. "
