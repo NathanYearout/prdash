@@ -194,15 +194,21 @@ class Inbox(unittest.TestCase):
             local.gh = github.gh
         self.assertEqual([c[-1] for c in calls], ["--force", "1"])
 
-    def test_worktree_finds_a_branch_already_checked_out(self):
+    def test_worktree_detaches_when_the_branch_is_checked_out_elsewhere(self):
         from prdash import local
-        d = tempfile.mkdtemp()
+        d, b = tempfile.mkdtemp(), "feat"
         sh = lambda *a, cwd=f"{d}/a": local.git(*a, cwd=cwd)
         sh("init", "-q", "a", cwd=d)
         sh("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "base")
-        sh("checkout", "-q", "-b", "feat")
-        self.assertEqual(os.path.realpath(local.checked_out_at(f"{d}/a", "feat")), os.path.realpath(f"{d}/a"))
-        self.assertIsNone(local.checked_out_at(f"{d}/a", "other"))
+        sh("worktree", "add", "-q", "--detach", f"{d}/wt")
+        sh("checkout", "-q", "-b", b)
+        calls, local.gh = [], lambda *a, cwd=None: calls.append(a)
+        try:
+            local.checkout_latest(pr(branch=b), f"{d}/wt")
+            local.checkout_latest(pr(branch=b), f"{d}/a")
+        finally:
+            local.gh = github.gh
+        self.assertEqual([c[-1] for c in calls], ["--detach", "1"])
 
     def test_review_since_your_last_review(self):
         from prdash import ai, local
