@@ -87,10 +87,24 @@ def checkout(pr):
     return f"{cwd} is now on {pr['branch']}"
 
 
+def checked_out_at(cwd, branch):
+    """Where branch is checked out, if anywhere. git allows one place per branch, and your clone counts as one."""
+    path = None
+    for line in git("worktree", "list", "--porcelain", cwd=cwd).splitlines():
+        if line.startswith("worktree "):
+            path = line[len("worktree "):]
+        elif line == f"branch refs/heads/{branch}":
+            return path
+    return None
+
+
 def worktree(pr):
-    """The PR's worktree, on its latest push. One with uncommitted changes is left exactly as it is."""
+    """The PR's worktree, on its latest push. One with uncommitted changes is left exactly as it is.
+    If the branch is already checked out elsewhere (your clone, say), that checkout is used as is."""
     wt, cwd = worktree_dir(pr), need(clone_dir(pr))
     git("fetch", "--quiet", "origin", cwd=cwd)
+    if (other := checked_out_at(cwd, pr["branch"])) and Path(other).resolve() != wt.resolve():
+        return other
     if (wt / ".git").exists():
         if not git("status", "--porcelain", "--untracked-files=no", cwd=wt):
             checkout_latest(pr, wt)
