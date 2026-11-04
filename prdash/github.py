@@ -369,6 +369,12 @@ def thread_resolve(url, thread, resolved=True):
     return "resolved" if resolved else "reopened"
 
 
+def inline_comment(pr, commit, path, line, body):
+    """A single review comment on one line of the PR's new code. GitHub refuses lines the diff doesn't show."""
+    gh("api", "-X", "POST", f'repos/{pr["owner"]}/{pr["repo"]}/pulls/{pr["number"]}/comments', "-f", f"body={body}",
+       "-f", f"commit_id={commit}", "-f", f"path={path}", "-F", f"line={int(line)}", "-f", "side=RIGHT")
+
+
 # op -> gh args. The comment/review body is appended where an op takes one.
 ACTIONS = {
     "approve": lambda u, b: ["pr", "review", u, "--approve", *(["-b", b] if b else [])],

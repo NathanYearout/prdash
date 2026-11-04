@@ -120,6 +120,10 @@ def seed():
         "2. No test covers an override lower than the global default.\n\n"
         "Nits:\n- Rename `ovr` to `override` in limits.py:41.\n\n"
         "Verdict: comment. Solid change; fix the cache stampede before merging."))
+    db.local_update(urls[6], {"proposed": {"commit": prs[urls[6]]["head"], "comments": [
+        {"id": 0, "path": "api/limits.py", "line": 88, "body": "On a cache miss under load every pod reads the override at once. "
+         "A single-flight lock (or a short negative cache) would keep this off the DB."},
+        {"id": 1, "path": "api/limits.py", "line": 41, "body": "nit: `override` reads better than `ovr`."}]}})
     db.put("request_prefs", {"acme": {"teams": ["web-devs"], "users": [], "slack": True}})
     db.local_update(urls[0], {"request_when_green": {"teams": ["web-devs"], "users": [], "slack": True, "at": time.time(), "skip": None}})
     db.local_update(urls[1], {"retry": {"head": prs[urls[1]]["head"], "attempts": 1, "max": 3, "at": time.time()}})

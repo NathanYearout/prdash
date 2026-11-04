@@ -242,6 +242,17 @@
       <section x-show="review(pane).status">
         <h4><svg class="ic"><use href="/static/icons.svg#sparkles"/></svg> <span x-text="cfg.ai_name + ' review'"></span> <span x-text="review(pane).finished ? ago(review(pane).finished * 1000) + ' ago' : review(pane).status === 'running' ? 'running, usually under a minute' : ''"></span></h4>
         <pre class="review-out" :class="{ err: review(pane).status === 'error' }" x-text="review(pane).output || 'Reading the diff…'"></pre>
+        <template x-for="c in L(pane).proposed?.comments || []" :key="pane.url + c.id">
+          <div class="reply proposed" x-data="{ body: c.body }">
+            <div class="cthread-h"><a :href="pane.url.replace(/\/pull\/\d+$/, '') + '/blob/' + L(pane).proposed.commit + '/' + c.path + '#L' + c.line" target="_blank" x-text="c.path + ':' + c.line"></a>
+              <span class="dim small">suggested comment</span></div>
+            <textarea rows="2" x-model="body" aria-label="Suggested comment"></textarea>
+            <div class="acts">
+              <button class="btn sm" @click="act('proposed_drop', pane, { arg: c.id })" :disabled="isBusy('proposed_drop', pane)">Decline</button>
+              <button class="btn sm primary" @click="act('proposed_send', pane, { arg: c.id, body })" :disabled="!body.trim() || isBusy('proposed_send', pane)" title="Posts it on that line as you">Send</button>
+            </div>
+          </div>
+        </template>
       </section>
 
       <section>
