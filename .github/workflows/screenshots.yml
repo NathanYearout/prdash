@@ -1,6 +1,6 @@
 # Re-renders the README screenshots and GIF from demo mode on PRs that change the UI, and attaches them to the run.
-# It never pushes: main only takes signed commits through PRs, so refresh docs/ in the UI PR with
-# `node tests/screenshots.mjs` (see README) and use these renders to check them.
+# It never pushes: main only takes signed commits through PRs. These renders are the canonical images (a local
+# Chromium renders fonts slightly differently), so to refresh the README, download the artifact into docs/ and commit it.
 name: Screenshots
 on:
   pull_request:
@@ -34,9 +34,9 @@ jobs:
         run: |
           if [ -n "$(git status --porcelain docs/)" ]; then
             git status --short docs/
-            echo "::notice::Screenshots differ from docs/. Download the artifact, or run node tests/screenshots.mjs and commit docs/."
+            echo "::notice::Screenshots differ from docs/. Download the screenshots artifact into docs/ and commit it."
           else
             echo "screenshots unchanged"
           fi
       - uses: actions/upload-artifact@v4
-        with: { name: screenshots, path: docs/, retention-days: 14 }
+        with: { name: screenshots, path: "docs/*.png\ndocs/*.gif", retention-days: 14 }
