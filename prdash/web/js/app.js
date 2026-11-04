@@ -732,6 +732,7 @@ Alpine.data("prdash", () => ({
     Object.assign(this, { q: "", preset: "open", panel: null, builderOpen: false, showHidden: false, picked: {} });
     this.setScope("mine");
     window.scrollTo({ top: 0, behavior: "smooth" });
+    document.querySelectorAll(".col").forEach(c => c.scrollTo({ top: 0, behavior: "smooth" }));
   },
 
   // ---- keyboard, vim-style. One table drives the keys, the which-key hint after a prefix, and the help panel.

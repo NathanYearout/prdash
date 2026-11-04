@@ -48,7 +48,7 @@ export function card(a, p) {
     <span class="repo" title="${esc(p.repo)}">${esc(p.repo)}</span><span class="num">#${p.number}</span>
     ${prio ? `<span class="prio p${prio}" title="Priority: ${PRIO[prio]}">${"●".repeat(prio)}</span>` : ""}
     <span class="grow"></span>
-    ${r.status === "running" ? icon("sparkles", "state spin") : r.status === "done" ? `<span title="${esc(a.cfg.ai_name)} reviewed">${icon("sparkles", "state ok")}</span>` : ""}
+    ${r.status === "running" ? icon("sparkles", "state thinking") : r.status === "done" ? `<span title="${esc(a.cfg.ai_name)} reviewed">${icon("sparkles", "state ok")}</span>` : ""}
     ${l.posted ? `<span title="Announced in Slack">${icon("hash", "state")}</span>` : ""}
     ${heat ? `<span class="age" title="Opened ${esc(new Date(p.created).toLocaleString())}">${heat[1]} old</span>`
       : `<span class="t" title="${p.merged ? "Merged" : "Updated"} ${esc(new Date(p.merged || p.updated).toLocaleString())}">${a.ago(p.merged || p.updated)}</span>`}
@@ -65,7 +65,7 @@ export function card(a, p) {
     <span class="hover-acts">
       ${p.merged ? "" : `<button class="mini" data-act="announce" title="Announce in Slack (p)">${icon("hash")}</button>`}
       <button class="mini" data-act="editor" title="Open in editor (e)">${icon("code")}</button>
-      ${a.cfg.ai_terminal ? `<button class="mini accent" data-act="agent" title="Open in ${esc(a.cfg.ai_name)} (c)">${icon("sparkles")}${esc(a.cfg.ai_name)}</button>` : ""}
+      ${a.cfg.ai_terminal ? `<button class="mini accent" data-act="agent" title="Open in ${esc(a.cfg.ai_name)} (c)">${icon("sparkles")}<span>${esc(a.cfg.ai_name)}</span></button>` : ""}
     </span>
   </div>
 </article>`;
