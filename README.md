@@ -255,7 +255,7 @@ node tests/e2e.mjs http://127.0.0.1:8766/     # headless Chromium walkthrough (n
 node tests/screenshots.mjs                    # regenerate docs/*.png and docs/urgent.gif from a --demo server on :8770 (same PRDASH_HOME)
 ```
 
-CI runs the tests on every push. On PRs that change the UI, a second workflow starts demo mode, re-renders the README screenshots and GIF in headless Chrome, and attaches them to the run. It doesn't push (main only takes signed commits through PRs), so run `node tests/screenshots.mjs` and commit `docs/` in the UI PR.
+CI runs the tests on every push. On PRs that change the UI, a second workflow starts demo mode, re-renders the README screenshots and GIF in headless Chrome, and attaches them to the run. It doesn't push (main only takes signed commits through PRs). To refresh the README images, download that run's `screenshots` artifact into `docs/` and commit it in the UI PR (`gh run download <run-id> -n screenshots -D docs`). Renders from a local Chromium differ slightly, so use CI's.
 
 Board status and merge blockers live in `status()` and `blocker()` in `prdash/github.py`, inbox rules in `diff()` in `prdash/sync.py`, filter keys in `prdash/web/js/filter.js`, and settings in `FIELDS` in `prdash/config.py`.
 
