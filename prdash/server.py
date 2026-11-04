@@ -28,6 +28,8 @@ OPS = {
     "rerun": lambda pr, body, arg: github.rerun_failed(pr["url"]),
     "agent": lambda pr, body, arg: local.agent(pr),
     "review": lambda pr, body, arg: start_review(pr, arg == "since"),
+    "proposed_send": lambda pr, body, arg: local.proposed_send(pr, arg, body),
+    "proposed_drop": lambda pr, body, arg: local.proposed_drop(pr, arg),
     "editor": lambda pr, body, arg: local.editor(pr),
     "terminal": lambda pr, body, arg: local.terminal(pr),
     "checkout": lambda pr, body, arg: local.checkout(pr),
@@ -37,7 +39,8 @@ OPS = {
     "slack_post": lambda pr, body, arg: integrations.slack_post(pr),
     "slack_find": lambda pr, body, arg: "found it" if integrations.slack_find(pr) else "not posted yet",
 }
-CHANGES_GITHUB = set(github.ACTIONS) | {"rerun", "rerequest", "request", "thread_reply", "thread_resolve", "thread_unresolve", "retry"}
+CHANGES_GITHUB = set(github.ACTIONS) | {"rerun", "rerequest", "request", "thread_reply", "thread_resolve", "thread_unresolve", "retry",
+                                        "proposed_send"}
 
 
 def start_review(pr, since=False):

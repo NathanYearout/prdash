@@ -210,6 +210,54 @@ class Inbox(unittest.TestCase):
             local.gh = github.gh
         self.assertEqual([c[-1] for c in calls], ["--detach", "1"])
 
+    def test_review_reads_the_prs_head_not_your_clones_branch(self):
+        from prdash import local
+        d = tempfile.mkdtemp()
+        sh = lambda *a, cwd=f"{d}/repos/web": local.git("-c", "user.name=t", "-c", "user.email=t@t", *a, cwd=cwd)
+        sh("init", "-q", "--bare", "origin.git", cwd=d)
+        sh("clone", "-q", f"{d}/origin.git", f"{d}/repos/web", cwd=d)
+        sh("commit", "-q", "--allow-empty", "-m", "base"); sh("push", "-q", "origin", "HEAD:main")
+        sh("checkout", "-q", "-b", "feat"); sh("commit", "-q", "--allow-empty", "-m", "v1")
+        sh("push", "-q", "origin", "feat:refs/pull/1/head")  # what GitHub serves for a PR
+        head = sh("rev-parse", "HEAD")
+        sh("checkout", "-q", "main"); sh("branch", "-q", "-D", "feat")  # your clone is on main, without the PR's commit
+        config.put("repo_dirs", f"{d}/repos"); config.put("worktree_dir", f"{d}/wt")
+        try:
+            p = pr(repo="web", head=head)
+            with local.review_checkout(p) as co:
+                self.assertNotEqual(str(co), f"{d}/repos/web")
+                self.assertEqual(sh("rev-parse", "HEAD", cwd=co), head)
+            self.assertFalse(co.exists(), "the temporary worktree is removed")
+            sh("checkout", "-q", "--detach", head)
+            with local.review_checkout(p) as co:
+                self.assertEqual(str(co), f"{d}/repos/web", "a clean clone already at head is used as is")
+            self.assertIn("latest push", local.where(co, p))
+            self.assertIn("not at the PR's latest push", local.where(co, {**p, "head": "abc1234"}))
+        finally:
+            config.put("repo_dirs", None); config.put("worktree_dir", None)
+
+    def test_review_proposes_comments_you_send_or_decline(self):
+        from prdash import local
+        out, comments = local.split_comments('Summary: ok\nVerdict: comment\n===== COMMENTS =====\n```json\n'
+                                             '[{"path": "a.py", "line": 3, "body": "off by one"}, {"path": "b.py", "line": 0, "body": "x"},'
+                                             ' {"path": "c.py", "line": "9", "body": "rename"}]\n```')
+        self.assertEqual(out, "Summary: ok\nVerdict: comment")
+        self.assertEqual([(c["path"], c["line"]) for c in comments], [("a.py", 3), ("c.py", 9)])
+        self.assertEqual(local.split_comments("Summary: ok\n===== COMMENTS =====\nnot json"),
+                         ("Summary: ok\n===== COMMENTS =====\nnot json", []), "a broken section stays visible")
+        p, sent = pr(head="h1"), []
+        db.local_update(p["url"], {"proposed": {"commit": "h1", "comments": comments}})
+        real, local.inline_comment = local.inline_comment, lambda *a: sent.append(a)
+        try:
+            self.assertEqual(local.proposed_send(p, comments[0]["id"], "off by one, see the loop"), "commented on a.py:3")
+            self.assertEqual(sent[0][1:], ("h1", "a.py", 3, "off by one, see the loop"))
+            with self.assertRaisesRegex(ValueError, "gone"):
+                local.proposed_send(p, comments[0]["id"], "again")
+            local.proposed_drop(p, comments[1]["id"])
+        finally:
+            local.inline_comment = real
+        self.assertNotIn("proposed", db.local_get(p["url"]))
+
     def test_review_since_your_last_review(self):
         from prdash import ai, local
         db.put("viewer", "me")

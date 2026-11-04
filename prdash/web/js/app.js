@@ -446,7 +446,8 @@ Alpine.data("prdash", () => ({
       if (op === "thread_reply") { this.replyFor = null; this.replyBody = ""; }
       if (op.startsWith("thread_") || op === "rerequest") this.loadDetail(p.url);
       if (["retry", "retry_stop"].includes(op)) this.load();
-      if (op === "review") this.load();
+      if (op === "review" || op.startsWith("proposed_")) this.load();
+      if (op === "proposed_send") this.loadDetail(p.url);
       if (op === "request") { this.picker = null; this.load(); this.loadDetail(p.url); }
       if (["comment", "approve", "request_changes"].includes(op)) this.loadDetail(p.url);
       if (["slack_post", "slack_find", "worktree", "worktree_remove", "checkout", "clone"].includes(op)) { this.load(); this.loadDetail(p.url); }

@@ -412,6 +412,7 @@ b.skel { display: inline-block; width: 1.6em; height: 1em; border-radius: 4px; a
 .mentions li { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 7px; cursor: pointer; font-size: 13px; }
 .mentions li.on { background: color-mix(in srgb, var(--accent) 14%, transparent); }
 .reply.inline { margin: 4px; }
+.reply.proposed { margin-top: 10px; overflow: hidden; }
 .retry { display: flex; align-items: center; gap: 8px; margin-top: 10px; padding: 7px 10px; border-radius: 8px; font-size: 12.5px;
   background: color-mix(in srgb, var(--amber) 9%, transparent); color: var(--text); }
 .retry > .ic { color: var(--amber); }
