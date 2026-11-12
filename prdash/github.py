@@ -223,7 +223,8 @@ def fetch(ids):
         try:
             return gql(query, ids=c)["nodes"]
         except RuntimeError as e:  # GitHub times out a heavy batch now and then (502/504): halve it and try again
-            if len(c) > 1 and any(code in str(e) for code in ("HTTP 502", "HTTP 504", "timeout", "timed out")):
+            # a 5xx with an empty/truncated "JSON" body surfaces as gh's own parse error instead of the status
+            if len(c) > 1 and any(code in str(e) for code in ("HTTP 502", "HTTP 504", "timeout", "timed out", "JSON input", "invalid character")):
                 return page(c[:len(c) // 2]) + page(c[len(c) // 2:])
             raise
     with ThreadPoolExecutor(8) as ex:
